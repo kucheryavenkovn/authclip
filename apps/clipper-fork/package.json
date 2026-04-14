@@ -12,9 +12,13 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
+    "build:extension": "node esbuild.config.mjs",
+    "build:all": "tsc && node esbuild.config.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
@@ -24,6 +28,8 @@
     "@authclip/shared-types": "workspace:*"
   },
   "devDependencies": {
+    "@types/chrome": "^0.1.40",
+    "esbuild": "^0.28.0",
     "jsdom": "^26.0.0",
     "typescript": "^5.6.0",
     "vitest": "^3.0.0"

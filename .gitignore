@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-extension/
 *.js.map
 *.d.ts.map
 .DS_Store

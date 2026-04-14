@@ -5,6 +5,9 @@
   "license": "MIT",
   "scripts": {
     "build": "pnpm -r --stream build",
+    "build:extension": "pnpm --filter @authclip/clipper-fork run build:extension",
+    "build:all": "pnpm run build && pnpm run build:extension",
+    "build:plugin": "pnpm --filter @authclip/obsidian-plugin run build",
     "test": "pnpm -r --stream test",
     "lint": "pnpm -r --stream lint",
     "typecheck": "pnpm -r --stream typecheck"
