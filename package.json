@@ -1,0 +1,16 @@
+{
+  "name": "authclip",
+  "private": true,
+  "description": "Auth-aware Obsidian Web Clipper fork + companion plugin",
+  "license": "MIT",
+  "scripts": {
+    "build": "pnpm -r --stream build",
+    "test": "pnpm -r --stream test",
+    "lint": "pnpm -r --stream lint",
+    "typecheck": "pnpm -r --stream typecheck"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}
