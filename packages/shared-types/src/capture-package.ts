@@ -18,6 +18,18 @@ export interface CaptureOptions {
   maxAttachmentBytes?: number;
 }
 
+export interface CaptureMeta {
+  author?: string;
+  description?: string;
+  published?: string;
+  siteName?: string;
+  domain?: string;
+  favicon?: string;
+  image?: string;
+  language?: string;
+  wordCount?: number;
+}
+
 export interface CapturePackage {
   version: "1.0";
   source: CaptureSource;
@@ -25,4 +37,6 @@ export interface CapturePackage {
   attachments: import("./attachment").AttachmentPayload[];
   linkMap: import("./link-map").LinkMapEntry[];
   options: CaptureOptions;
+  meta?: CaptureMeta;
+  selectedHtml?: string;
 }

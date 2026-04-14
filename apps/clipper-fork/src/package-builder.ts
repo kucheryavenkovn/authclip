@@ -3,6 +3,7 @@ import type {
   CaptureSource,
   CaptureNote,
   CaptureOptions,
+  CaptureMeta,
   AttachmentPayload,
   LinkMapEntry,
   RewriteMode,
@@ -17,6 +18,8 @@ export interface PackageInput {
   deduplicate?: boolean;
   attachmentSubfolder?: string;
   maxAttachmentBytes?: number;
+  meta?: CaptureMeta;
+  selectedHtml?: string;
 }
 
 function buildLinkMap(attachments: AttachmentPayload[]): LinkMapEntry[] {
@@ -60,5 +63,7 @@ export function buildCapturePackage(input: PackageInput): CapturePackage {
     attachments,
     linkMap,
     options,
+    ...(input.meta && { meta: input.meta }),
+    ...(input.selectedHtml && { selectedHtml: input.selectedHtml }),
   };
 }

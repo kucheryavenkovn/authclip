@@ -5,6 +5,8 @@ const btnClip = document.getElementById("btnClip") as HTMLButtonElement;
 const btnCheck = document.getElementById("btnCheck") as HTMLButtonElement;
 const resultEl = document.getElementById("result") as HTMLDivElement;
 
+document.getElementById("version")!.textContent = `v${chrome.runtime.getManifest().version}`;
+
 function getPort(): number {
   return parseInt(portInput.value, 10) || 27124;
 }
@@ -102,5 +104,50 @@ function escapeHtml(str: string): string {
 
 btnClip.addEventListener("click", clipPage);
 btnCheck.addEventListener("click", checkConnection);
+
+const templateToggle = document.getElementById("templateToggle") as HTMLDivElement;
+const templatePanel = document.getElementById("templatePanel") as HTMLDivElement;
+const templateEditor = document.getElementById("templateEditor") as HTMLTextAreaElement;
+const btnSaveTemplate = document.getElementById("btnSaveTemplate") as HTMLButtonElement;
+const btnResetTemplate = document.getElementById("btnResetTemplate") as HTMLButtonElement;
+const savedMsg = document.getElementById("savedMsg") as HTMLSpanElement;
+
+const DEFAULT_TEMPLATE = `# {{title}}
+
+Источник: {{url}}
+{% if author %}
+Автор: {{author}}
+{% endif %}
+{% if published %}
+Дата: {{published}}
+{% endif %}
+
+---
+
+{{content}}`;
+
+templateToggle.addEventListener("click", () => {
+  templateToggle.classList.toggle("open");
+  templatePanel.classList.toggle("open");
+});
+
+chrome.storage.sync.get("clipTemplate", (result: { clipTemplate?: string }) => {
+  templateEditor.value = result.clipTemplate || DEFAULT_TEMPLATE;
+});
+
+btnSaveTemplate.addEventListener("click", () => {
+  chrome.storage.sync.set({ clipTemplate: templateEditor.value }, () => {
+    savedMsg.classList.add("show");
+    setTimeout(() => savedMsg.classList.remove("show"), 1500);
+  });
+});
+
+btnResetTemplate.addEventListener("click", () => {
+  templateEditor.value = DEFAULT_TEMPLATE;
+  chrome.storage.sync.set({ clipTemplate: DEFAULT_TEMPLATE }, () => {
+    savedMsg.classList.add("show");
+    setTimeout(() => savedMsg.classList.remove("show"), 1500);
+  });
+});
 
 checkConnection();

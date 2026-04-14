@@ -17,6 +17,7 @@ export type {
   CaptureNote,
   CaptureOptions,
   CapturePackage,
+  CaptureMeta,
 } from "./capture-package";
 export type {
   ClipResultStatus,
@@ -43,6 +44,7 @@ export {
   CaptureSourceSchema,
   CaptureNoteSchema,
   CaptureOptionsSchema,
+  CaptureMetaSchema,
   CapturePackageSchema,
   AttachmentStatusSavedSchema,
   AttachmentStatusDeduplicatedSchema,

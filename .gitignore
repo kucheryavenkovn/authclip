@@ -1,7 +1,10 @@
 node_modules/
 dist/
 dist-extension/
+dev-extension/
 *.js.map
 *.d.ts.map
 .DS_Store
 Thumbs.db
+nul
+_reference/

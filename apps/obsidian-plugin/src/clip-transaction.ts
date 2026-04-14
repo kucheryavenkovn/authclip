@@ -125,6 +125,13 @@ function prependFrontmatter(
   }
   lines.push(`captured_at: ${yamlString(pkg.source.capturedAt)}`);
   lines.push(`clipper_mode: authclip`);
+  if (pkg.meta?.author) lines.push(`author: ${yamlString(pkg.meta.author)}`);
+  if (pkg.meta?.description) lines.push(`description: ${yamlString(pkg.meta.description)}`);
+  if (pkg.meta?.published) lines.push(`published: ${yamlString(pkg.meta.published)}`);
+  if (pkg.meta?.siteName) lines.push(`site_name: ${yamlString(pkg.meta.siteName)}`);
+  if (pkg.meta?.domain) lines.push(`domain: ${yamlString(pkg.meta.domain)}`);
+  if (pkg.meta?.language) lines.push(`language: ${yamlString(pkg.meta.language)}`);
+  if (pkg.meta?.wordCount) lines.push(`word_count: ${pkg.meta.wordCount}`);
   lines.push(`assets_saved: ${saved}`);
   lines.push(`assets_failed: ${failed}`);
   lines.push("---");

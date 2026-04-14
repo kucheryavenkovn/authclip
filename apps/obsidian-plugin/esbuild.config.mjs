@@ -5,7 +5,9 @@ import { join, dirname } from "path";
 const outDir = "dist";
 const isProd = process.env.NODE_ENV === "production";
 
-if (existsSync(outDir)) rmSync(outDir, { recursive: true });
+if (existsSync(outDir)) {
+	try { rmSync(outDir, { recursive: true }); } catch { }
+}
 mkdirSync(outDir, { recursive: true });
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));

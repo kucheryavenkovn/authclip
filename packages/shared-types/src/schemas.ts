@@ -63,6 +63,18 @@ export const CaptureOptionsSchema = z.object({
   maxAttachmentBytes: z.number().int().positive().optional(),
 });
 
+export const CaptureMetaSchema = z.object({
+  author: z.string().optional(),
+  description: z.string().optional(),
+  published: z.string().optional(),
+  siteName: z.string().optional(),
+  domain: z.string().optional(),
+  favicon: z.string().optional(),
+  image: z.string().optional(),
+  language: z.string().optional(),
+  wordCount: z.number().int().nonnegative().optional(),
+});
+
 export const CapturePackageSchema = z.object({
   version: z.literal("1.0"),
   source: CaptureSourceSchema,
@@ -70,6 +82,8 @@ export const CapturePackageSchema = z.object({
   attachments: z.array(AttachmentPayloadSchema),
   linkMap: z.array(LinkMapEntrySchema),
   options: CaptureOptionsSchema,
+  meta: CaptureMetaSchema.optional(),
+  selectedHtml: z.string().optional(),
 });
 
 export const AttachmentStatusSavedSchema = z.object({

@@ -1,0 +1,236 @@
+@keyframes obsidian-highlighter-menu-open {
+	from {
+		opacity: 0;
+		transform: translateX(-50%) translateY(-8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(-50%) translateY(0);
+	}
+}
+
+@keyframes obsidian-highlighter-menu-close {
+	from {
+		opacity: 1;
+		transform: translateX(-50%) translateY(0);
+	}
+	to {
+		opacity: 0;
+		transform: translateX(-50%) translateY(-8px);
+	}
+}
+
+@keyframes obsidian-highlight-overlay-fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+.obsidian-highlighter-menu {
+	position: fixed;
+	top: 12px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 2147483647;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 10px;
+	background: #1a1a2e;
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	border-radius: 20px;
+	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+	font-size: 13px;
+	color: #e0e0e0;
+	animation: obsidian-highlighter-menu-open 0.2s ease-out;
+	user-select: none;
+
+	button {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 4px;
+		padding: 5px 10px;
+		background: transparent;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 12px;
+		color: #c0c0c0;
+		cursor: pointer;
+		font-size: 13px;
+		font-family: inherit;
+		transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+		white-space: nowrap;
+		line-height: 1;
+
+		&:hover {
+			background: rgba(255, 255, 255, 0.08);
+			color: #fff;
+			border-color: rgba(255, 255, 255, 0.2);
+		}
+
+		&:active {
+			background: rgba(255, 255, 255, 0.12);
+		}
+
+		&[aria-disabled='true'] {
+			opacity: 0.35;
+			cursor: default;
+			pointer-events: none;
+		}
+
+		svg {
+			flex-shrink: 0;
+		}
+	}
+
+	.mod-cta {
+		background: #7c3aed;
+		border-color: #7c3aed;
+		color: #fff;
+		font-weight: 500;
+
+		&:hover {
+			background: #6d28d9;
+			border-color: #6d28d9;
+		}
+
+		&:active {
+			background: #5b21b6;
+		}
+	}
+
+	.no-highlights {
+		color: #888;
+		font-size: 12px;
+		padding: 0 6px;
+	}
+
+	#obsidian-clear-highlights {
+		svg {
+			vertical-align: middle;
+		}
+	}
+}
+
+.obsidian-highlight-overlay {
+	position: absolute;
+	background: rgba(255, 212, 0, 0.35);
+	border-radius: 2px;
+	pointer-events: auto;
+	cursor: pointer;
+	z-index: 2147483646;
+	transition: background-color 0.15s;
+	animation: obsidian-highlight-overlay-fade-in 0.15s ease-out;
+
+	&:hover,
+	&.is-hovering {
+		background: rgba(255, 212, 0, 0.55);
+	}
+
+	&.obsidian-highlight-overlay-dark {
+		background: rgba(255, 212, 0, 0.45);
+
+		&:hover,
+		&.is-hovering {
+			background: rgba(255, 212, 0, 0.65);
+		}
+	}
+}
+
+#obsidian-highlight-hover-overlay {
+	position: absolute;
+	border: 2px dashed rgba(255, 212, 0, 0.7);
+	border-radius: 3px;
+	pointer-events: none;
+	z-index: 2147483645;
+	display: none;
+	transition: none;
+
+	&.on-highlight {
+		border-color: rgba(255, 80, 80, 0.7);
+	}
+}
+
+body.obsidian-highlighter-active {
+	cursor: crosshair;
+
+	::selection {
+		background: rgba(255, 212, 0, 0.4);
+		color: inherit;
+	}
+
+	::-moz-selection {
+		background: rgba(255, 212, 0, 0.4);
+		color: inherit;
+	}
+
+	a {
+		cursor: crosshair;
+	}
+}
+
+@media (max-width: 768px) {
+	.obsidian-highlighter-menu {
+		top: 8px;
+		padding: 5px 8px;
+		gap: 4px;
+		font-size: 12px;
+
+		button {
+			padding: 4px 8px;
+			font-size: 12px;
+		}
+
+		.mod-cta {
+			font-size: 12px;
+		}
+
+		.no-highlights {
+			font-size: 11px;
+		}
+	}
+}
+
+@media (max-width: 480px) {
+	.obsidian-highlighter-menu {
+		top: 6px;
+		padding: 4px 6px;
+		gap: 3px;
+
+		button {
+			padding: 3px 6px;
+			font-size: 11px;
+		}
+
+		.mod-cta {
+			padding: 3px 8px;
+		}
+
+		.no-highlights {
+			font-size: 10px;
+		}
+	}
+}
+
+@media (prefers-color-scheme: dark) {
+	.obsidian-highlight-overlay:not(.obsidian-highlight-overlay-dark) {
+		background: rgba(255, 212, 0, 0.3);
+
+		&:hover,
+		&.is-hovering {
+			background: rgba(255, 212, 0, 0.5);
+		}
+	}
+
+	#obsidian-highlight-hover-overlay {
+		border-color: rgba(255, 212, 0, 0.5);
+
+		&.on-highlight {
+			border-color: rgba(255, 80, 80, 0.5);
+		}
+	}
+}
