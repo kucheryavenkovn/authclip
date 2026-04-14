@@ -121,4 +121,202 @@ describe("rewriteMarkdown", () => {
     expect(result).toContain("<!-- authclip: failed to localize URL -->");
     expect(rewriteErrors).toHaveLength(1);
   });
+
+  it("leaves skipped attachments untouched", () => {
+    const markdown = "![img](https://example.com/skip.jpg)";
+    const linkMap: LinkMapEntry[] = [
+      { from: "https://example.com/skip.jpg", attachmentId: "skip" },
+    ];
+    const results = new Map<string, AttachmentStatus>([
+      ["skip", { id: "skip", status: "skipped" }],
+    ]);
+
+    const { markdown: result, rewriteErrors } = rewriteMarkdown(
+      markdown, linkMap, results, "wikilink", "assets", "Clippings/note.md"
+    );
+
+    expect(result).toBe("![img](https://example.com/skip.jpg)");
+    expect(rewriteErrors).toHaveLength(0);
+  });
+
+  it("returns empty markdown unchanged", () => {
+    const markdown = "";
+    const { markdown: result, rewriteErrors } = rewriteMarkdown(
+      markdown, [], new Map(), "wikilink", "assets", "note.md"
+    );
+    expect(result).toBe("");
+    expect(rewriteErrors).toHaveLength(0);
+  });
+
+  it("handles markdown with no images", () => {
+    const markdown = "# Title\n\nJust text with **bold** and *italic*.\n";
+    const { markdown: result, rewriteErrors } = rewriteMarkdown(
+      markdown, [], new Map(), "wikilink", "assets", "note.md"
+    );
+    expect(result).toBe(markdown);
+    expect(rewriteErrors).toHaveLength(0);
+  });
+
+  it("rewrites same URL appearing multiple times", () => {
+    const markdown = "A ![](https://example.com/img.jpg) B ![](https://example.com/img.jpg) C";
+    const linkMap: LinkMapEntry[] = [
+      { from: "https://example.com/img.jpg", attachmentId: "att_1" },
+    ];
+    const results = new Map<string, AttachmentStatus>([
+      ["att_1", { id: "att_1", status: "saved", vaultPath: "assets/img.jpg" }],
+    ]);
+
+    const { markdown: result } = rewriteMarkdown(
+      markdown, linkMap, results, "wikilink", "assets", "note.md"
+    );
+
+    expect(result).toBe("A ![[img.jpg]] B ![[img.jpg]] C");
+  });
+
+  it("preserves alt text in relative-markdown mode", () => {
+    const markdown = "![My Photo](https://example.com/photo.jpg)";
+    const linkMap: LinkMapEntry[] = [
+      { from: "https://example.com/photo.jpg", attachmentId: "att_1" },
+    ];
+    const results = new Map<string, AttachmentStatus>([
+      ["att_1", { id: "att_1", status: "saved", vaultPath: "assets/photo.jpg" }],
+    ]);
+
+    const { markdown: result } = rewriteMarkdown(
+      markdown, linkMap, results, "relative-markdown", "assets", "note.md"
+    );
+
+    expect(result).toBe("![My Photo](./assets/photo.jpg)");
+  });
+
+  it("computes relative path for nested note directory", () => {
+    const markdown = "![img](https://example.com/img.jpg)";
+    const linkMap: LinkMapEntry[] = [
+      { from: "https://example.com/img.jpg", attachmentId: "att_1" },
+    ];
+    const results = new Map<string, AttachmentStatus>([
+      ["att_1", { id: "att_1", status: "saved", vaultPath: "attachments/img.jpg" }],
+    ]);
+
+    const { markdown: result } = rewriteMarkdown(
+      markdown, linkMap, results, "relative-markdown", "attachments", "Notes/Projects/note.md"
+    );
+
+    expect(result).toBe("![img](../../attachments/img.jpg)");
+  });
+
+  it("computes relative path for root-level note", () => {
+    const markdown = "![img](https://example.com/img.jpg)";
+    const linkMap: LinkMapEntry[] = [
+      { from: "https://example.com/img.jpg", attachmentId: "att_1" },
+    ];
+    const results = new Map<string, AttachmentStatus>([
+      ["att_1", { id: "att_1", status: "saved", vaultPath: "assets/img.jpg" }],
+    ]);
+
+    const { markdown: result } = rewriteMarkdown(
+      markdown, linkMap, results, "relative-markdown", "assets", "note.md"
+    );
+
+    expect(result).toBe("![img](./assets/img.jpg)");
+  });
+
+  it("ignores linkMap entries with no matching attachment result", () => {
+    const markdown = "![img](https://example.com/orphan.jpg)";
+    const linkMap: LinkMapEntry[] = [
+      { from: "https://example.com/orphan.jpg", attachmentId: "orphan" },
+    ];
+    const results = new Map<string, AttachmentStatus>();
+
+    const { markdown: result, rewriteErrors } = rewriteMarkdown(
+      markdown, linkMap, results, "wikilink", "assets", "note.md"
+    );
+
+    expect(result).toBe(markdown);
+    expect(rewriteErrors).toHaveLength(0);
+  });
+
+  it("handles URL with surrounding whitespace in markdown", () => {
+    const markdown = "![img]( https://example.com/img.jpg )";
+    const linkMap: LinkMapEntry[] = [
+      { from: "https://example.com/img.jpg", attachmentId: "att_1" },
+    ];
+    const results = new Map<string, AttachmentStatus>([
+      ["att_1", { id: "att_1", status: "saved", vaultPath: "assets/img.jpg" }],
+    ]);
+
+    const { markdown: result } = rewriteMarkdown(
+      markdown, linkMap, results, "wikilink", "assets", "note.md"
+    );
+
+    expect(result).toBe("![[img.jpg]]");
+  });
+
+  it("handles multiple failures with correct error count", () => {
+    const markdown = "A ![](https://x.com/1.jpg) B ![](https://x.com/2.jpg)";
+    const linkMap: LinkMapEntry[] = [
+      { from: "https://x.com/1.jpg", attachmentId: "a1" },
+      { from: "https://x.com/2.jpg", attachmentId: "a2" },
+    ];
+    const results = new Map<string, AttachmentStatus>([
+      ["a1", { id: "a1", status: "failed", code: "WRITE_FAILED", message: "err1" }],
+      ["a2", { id: "a2", status: "failed", code: "FETCH_FAILED", message: "err2" }],
+    ]);
+
+    const { rewriteErrors } = rewriteMarkdown(
+      markdown, linkMap, results, "wikilink", "assets", "note.md"
+    );
+
+    expect(rewriteErrors).toHaveLength(2);
+    expect(rewriteErrors[0].reason).toContain("WRITE_FAILED");
+    expect(rewriteErrors[1].reason).toContain("FETCH_FAILED");
+  });
+
+  it("extracts filename from nested vaultPath for wikilink", () => {
+    const markdown = "![img](https://example.com/img.jpg)";
+    const linkMap: LinkMapEntry[] = [
+      { from: "https://example.com/img.jpg", attachmentId: "att_1" },
+    ];
+    const results = new Map<string, AttachmentStatus>([
+      ["att_1", { id: "att_1", status: "saved", vaultPath: "Notes/Projects/_assets/my-image.jpg" }],
+    ]);
+
+    const { markdown: result } = rewriteMarkdown(
+      markdown, linkMap, results, "wikilink", "Notes/Projects/_assets", "Notes/Projects/note.md"
+    );
+
+    expect(result).toBe("![[my-image.jpg]]");
+  });
+
+  it("handles deduplicated status same as saved for wikilink", () => {
+    const markdown = "![x](https://example.com/dup.jpg)";
+    const linkMap: LinkMapEntry[] = [
+      { from: "https://example.com/dup.jpg", attachmentId: "att_d" },
+    ];
+    const results = new Map<string, AttachmentStatus>([
+      ["att_d", { id: "att_d", status: "deduplicated", vaultPath: "global/existing.jpg" }],
+    ]);
+
+    const { markdown: result } = rewriteMarkdown(
+      markdown, linkMap, results, "wikilink", "global", "note.md"
+    );
+
+    expect(result).toBe("![[existing.jpg]]");
+  });
+
+  it("handles deduplicated status same as saved for relative-markdown", () => {
+    const markdown = "![x](https://example.com/dup.jpg)";
+    const linkMap: LinkMapEntry[] = [
+      { from: "https://example.com/dup.jpg", attachmentId: "att_d" },
+    ];
+    const results = new Map<string, AttachmentStatus>([
+      ["att_d", { id: "att_d", status: "deduplicated", vaultPath: "global/existing.jpg" }],
+    ]);
+
+    const { markdown: result } = rewriteMarkdown(
+      markdown, linkMap, results, "relative-markdown", "global", "note.md"
+    );
+
+    expect(result).toContain("existing.jpg");
+  });
 });

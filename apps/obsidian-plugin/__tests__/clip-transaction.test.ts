@@ -220,4 +220,252 @@ describe("executeClipTransaction", () => {
     expect(report.status).toBe("failed");
     expect(report.notePath).toBeNull();
   });
+
+  it("renames duplicate filenames within same transaction", async () => {
+    const { vault, files } = makeVault();
+    const b64 = Buffer.from("image-data").toString("base64");
+
+    const report = await executeClipTransaction({
+      pkg: makePackage({
+        attachments: [
+          {
+            id: "att_001",
+            originalUrl: "https://example.com/img.jpg",
+            mimeType: "image/jpeg",
+            suggestedName: "img.jpg",
+            dataBase64: b64,
+          },
+          {
+            id: "att_002",
+            originalUrl: "https://other.com/img.jpg",
+            mimeType: "image/jpeg",
+            suggestedName: "img.jpg",
+            dataBase64: b64,
+          },
+        ],
+        linkMap: [
+          { from: "https://example.com/img.jpg", attachmentId: "att_001" },
+          { from: "https://other.com/img.jpg", attachmentId: "att_002" },
+        ],
+      }),
+      settings: { ...DEFAULT_SETTINGS },
+      vault,
+    });
+
+    expect(report.status).toBe("success");
+    expect(report.attachments).toHaveLength(2);
+    const paths = report.attachments
+      .filter((a): a is typeof a & { status: "saved" } => a.status === "saved")
+      .map((a) => a.vaultPath);
+    expect(new Set(paths).size).toBe(2);
+    expect(files.size).toBeGreaterThanOrEqual(3);
+  });
+
+  it("handles partial failure with some attachments succeeding", async () => {
+    const { vault, files } = makeVault();
+    let binaryCallCount = 0;
+    const partialVault: VaultAdapter = {
+      ...vault,
+      async writeBinary(path, data) {
+        binaryCallCount++;
+        if (binaryCallCount > 1) throw new Error("Disk full after first");
+        files.set(path, data);
+      },
+    };
+
+    const b64 = Buffer.from("data").toString("base64");
+    const report = await executeClipTransaction({
+      pkg: makePackage({
+        attachments: [
+          {
+            id: "att_001",
+            originalUrl: "https://example.com/a.jpg",
+            mimeType: "image/jpeg",
+            suggestedName: "a.jpg",
+            dataBase64: b64,
+          },
+          {
+            id: "att_002",
+            originalUrl: "https://example.com/b.jpg",
+            mimeType: "image/jpeg",
+            suggestedName: "b.jpg",
+            dataBase64: b64,
+          },
+        ],
+        linkMap: [
+          { from: "https://example.com/a.jpg", attachmentId: "att_001" },
+          { from: "https://example.com/b.jpg", attachmentId: "att_002" },
+        ],
+      }),
+      settings: { ...DEFAULT_SETTINGS },
+      vault: partialVault,
+    });
+
+    expect(report.status).toBe("partial");
+    const savedCount = report.attachments.filter((a) => a.status === "saved").length;
+    const failedCount = report.attachments.filter((a) => a.status === "failed").length;
+    expect(savedCount + failedCount).toBe(2);
+    expect(failedCount).toBeGreaterThanOrEqual(1);
+    expect(report.notePath).not.toBeNull();
+  });
+
+  it("renames attachments when existing files in vault conflict", async () => {
+    const { vault, files } = makeVault();
+    files.set("Clippings/_assets/2026-04-14 Test-Article/img.jpg", new Uint8Array([0]));
+
+    const report = await executeClipTransaction({
+      pkg: makePackage(),
+      settings: { ...DEFAULT_SETTINGS },
+      vault,
+    });
+
+    expect(report.status).toBe("success");
+    const saved = report.attachments.find((a) => a.status === "saved");
+    expect(saved).toBeDefined();
+    if (saved && saved.status === "saved") {
+      expect(saved.vaultPath).not.toBe("Clippings/_assets/2026-04-14 Test-Article/img.jpg");
+      expect(saved.vaultPath).toContain("img-1.jpg");
+    }
+  });
+
+  it("rewrites markdown for relative-markdown mode", async () => {
+    const { vault, files } = makeVault();
+
+    const report = await executeClipTransaction({
+      pkg: makePackage(),
+      settings: {
+        ...DEFAULT_SETTINGS,
+        rewriteMode: "relative-markdown",
+      },
+      vault,
+    });
+
+    expect(report.status).toBe("success");
+    const noteContent = files.get("Clippings/2026-04-14 Test-Article.md") as string;
+    expect(noteContent).toContain("img.jpg");
+    expect(noteContent).not.toContain("![[");
+  });
+
+  it("handles same-as-note attachment strategy", async () => {
+    const { vault, files } = makeVault();
+
+    const report = await executeClipTransaction({
+      pkg: makePackage(),
+      settings: {
+        ...DEFAULT_SETTINGS,
+        attachmentFolderStrategy: "same-as-note",
+      },
+      vault,
+    });
+
+    expect(report.status).toBe("success");
+    const saved = report.attachments.find((a) => a.status === "saved");
+    if (saved && saved.status === "saved") {
+      expect(saved.vaultPath).toMatch(/^Clippings\//);
+      expect(saved.vaultPath).not.toContain("_assets");
+    }
+  });
+
+  it("counts assets_saved and assets_failed in frontmatter", async () => {
+    const { vault, files } = makeVault();
+    const failingVault: VaultAdapter = {
+      ...vault,
+      async writeBinary() {
+        throw new Error("fail");
+      },
+    };
+
+    const b64 = Buffer.from("data").toString("base64");
+    const report = await executeClipTransaction({
+      pkg: makePackage({
+        attachments: [
+          {
+            id: "att_001",
+            originalUrl: "https://example.com/a.jpg",
+            mimeType: "image/jpeg",
+            suggestedName: "a.jpg",
+            dataBase64: b64,
+          },
+          {
+            id: "att_002",
+            originalUrl: "https://example.com/b.jpg",
+            mimeType: "image/jpeg",
+            suggestedName: "b.jpg",
+            dataBase64: b64,
+          },
+        ],
+        linkMap: [
+          { from: "https://example.com/a.jpg", attachmentId: "att_001" },
+          { from: "https://example.com/b.jpg", attachmentId: "att_002" },
+        ],
+      }),
+      settings: { ...DEFAULT_SETTINGS },
+      vault: failingVault,
+    });
+
+    expect(report.status).toBe("partial");
+    const noteContent = files.get("Clippings/2026-04-14 Test-Article.md") as string;
+    expect(noteContent).toContain("assets_saved: 0");
+    expect(noteContent).toContain("assets_failed: 2");
+  });
+
+  it("handles three attachments with mixed outcomes", async () => {
+    const { vault, files } = makeVault();
+    let binaryWriteCount = 0;
+    const mixedVault: VaultAdapter = {
+      ...vault,
+      async writeBinary(path, data) {
+        binaryWriteCount++;
+        if (binaryWriteCount === 2) throw new Error("Second write fails");
+        files.set(path, data);
+      },
+    };
+
+    const b64 = Buffer.from("data").toString("base64");
+    const report = await executeClipTransaction({
+      pkg: makePackage({
+        attachments: [
+          {
+            id: "att_001",
+            originalUrl: "https://example.com/a.jpg",
+            mimeType: "image/jpeg",
+            suggestedName: "a.jpg",
+            dataBase64: b64,
+          },
+          {
+            id: "att_002",
+            originalUrl: "https://example.com/b.jpg",
+            mimeType: "image/jpeg",
+            suggestedName: "b.jpg",
+            dataBase64: b64,
+          },
+          {
+            id: "att_003",
+            originalUrl: "https://example.com/c.jpg",
+            mimeType: "image/jpeg",
+            suggestedName: "c.jpg",
+            dataBase64: b64,
+          },
+        ],
+        linkMap: [
+          { from: "https://example.com/a.jpg", attachmentId: "att_001" },
+          { from: "https://example.com/b.jpg", attachmentId: "att_002" },
+          { from: "https://example.com/c.jpg", attachmentId: "att_003" },
+        ],
+        note: {
+          pathHint: "Clippings/2026-04-14 Test-Article.md",
+          markdown: "# Test\n\n![](https://example.com/a.jpg) ![](https://example.com/b.jpg) ![](https://example.com/c.jpg)\n",
+        },
+      }),
+      settings: { ...DEFAULT_SETTINGS },
+      vault: mixedVault,
+    });
+
+    expect(report.status).toBe("partial");
+    expect(report.attachments.filter((a) => a.status === "saved")).toHaveLength(2);
+    expect(report.attachments.filter((a) => a.status === "failed")).toHaveLength(1);
+    const noteContent = files.get("Clippings/2026-04-14 Test-Article.md") as string;
+    expect(noteContent).toContain("![[a.jpg]]");
+    expect(noteContent).toContain("<!-- authclip: failed to localize URL -->");
+  });
 });
