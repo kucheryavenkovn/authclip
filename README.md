@@ -83,85 +83,89 @@ pnpm run test
 pnpm run typecheck
 ```
 
-## Install the Obsidian Plugin
+## Installation
 
-1. Build the plugin:
-   ```bash
-   pnpm run build:plugin
-   ```
+> **Важно:** плагины не распространяются как готовые файлы — они генерируются локально из исходного кода. Сначала нужно клонировать репозиторий и собрать проект (см. раздел [Build](#build) выше). После сборки артефакты появятся в папках `apps/obsidian-plugin/dist/` и `apps/clipper-fork/dist-extension/`.
 
-2. Copy the output to your Obsidian vault's plugins directory:
-   ```
-   <vault>/.obsidian/plugins/authclip/
-   ```
+Проверить что сборка прошла успешно:
 
-   You need these files from `apps/obsidian-plugin/dist/`:
-   - `main.js`
-   - `manifest.json`
-   - `styles.css`
+```bash
+ls -la apps/obsidian-plugin/dist/main.js apps/obsidian-plugin/dist/manifest.json apps/obsidian-plugin/dist/styles.css apps/clipper-fork/dist-extension/manifest.json apps/clipper-fork/dist-extension/background.js apps/clipper-fork/dist-extension/popup.html
+```
 
-   Or use a symlink/copy command:
-   ```bash
-   # PowerShell example
-   $vaultPath = "C:\Path\To\Your\Vault"
-   $pluginDir = "$vaultPath\.obsidian\plugins\authclip"
-   New-Item -ItemType Directory -Force -Path $pluginDir
-   Copy-Item apps/obsidian-plugin/dist/* $pluginDir/
-   ```
+Ожидаемый вывод — 6 файлов с ненулевым размером:
+```
+apps/obsidian-plugin/dist/main.js
+apps/obsidian-plugin/dist/manifest.json
+apps/obsidian-plugin/dist/styles.css
+apps/clipper-fork/dist-extension/manifest.json
+apps/clipper-fork/dist-extension/background.js
+apps/clipper-fork/dist-extension/popup.html
+```
 
-3. Enable the plugin in Obsidian:
-   - Open **Settings → Community plugins**
-   - Click **Reload** if needed
-   - Find **AuthClip** in the list and toggle it on
+### 1. Установка плагина в Obsidian
 
-4. Configure the plugin:
-   - Open **Settings → AuthClip**
-   - Set the **HTTP Port** (default: 27124)
-   - Optionally set an **Auth Token** (shared secret for the browser extension)
-   - Configure attachment folder strategy, rewrite mode, etc.
+Готовые файлы лежат в `apps/obsidian-plugin/dist/`. Нужно скопировать 3 файла в папку vault:
 
-## Install the Browser Extension
+```powershell
+# Замените путь на ваш vault
+$pluginDir = "C:\Users\tux\Documents\MyVault\.obsidian\plugins\authclip"
+New-Item -ItemType Directory -Force -Path $pluginDir
+Copy-Item apps\obsidian-plugin\dist\main.js $pluginDir\
+Copy-Item apps\obsidian-plugin\dist\manifest.json $pluginDir\
+Copy-Item apps\obsidian-plugin\dist\styles.css $pluginDir\
+```
 
-### Chrome
+Или для Linux/macOS:
 
-1. Build the extension:
-   ```bash
-   pnpm run build:extension
-   ```
+```bash
+PLUGIN_DIR="/path/to/vault/.obsidian/plugins/authclip"
+mkdir -p "$PLUGIN_DIR"
+cp apps/obsidian-plugin/dist/main.js apps/obsidian-plugin/dist/manifest.json apps/obsidian-plugin/dist/styles.css "$PLUGIN_DIR/"
+```
 
-2. Open `chrome://extensions/`
-3. Enable **Developer mode** (top-right toggle)
-4. Click **Load unpacked**
-5. Select the `apps/clipper-fork/dist-extension/` folder
+Затем в Obsidian:
+1. Откройте **Settings → Community plugins**
+2. Нажмите **Reload**, если плагин не появился
+3. Найдите **AuthClip** в списке и включите тумблер
 
-### Edge
+После включения плагин запустит HTTP-сервер на `127.0.0.1:27124`. Настройки плагина — в **Settings → AuthClip**:
+- **HTTP Port** — порт для связи с расширением (по умолчанию 27124)
+- **Auth Token** — опциональный общий секрет; оставьте пустым для отключения авторизации
+- Остальные настройки: папка заметок, стратегия вложений, режим ссылок и т.д.
 
-1. Build the extension:
-   ```bash
-   pnpm run build:extension
-   ```
+### 2. Установка расширения в Chrome/Edge
 
-2. Open `edge://extensions/`
-3. Enable **Developer mode** (left sidebar toggle)
-4. Click **Load unpacked**
-5. Select the `apps/clipper-fork/dist-extension/` folder
+Готовая папка расширения: `apps/clipper-fork/dist-extension/`
 
-## Usage
+#### Chrome
 
-### Clip a page with local assets
+1. Откройте `chrome://extensions/`
+2. Включите **Developer mode** (переключатель справа вверху)
+3. Нажмите **Load unpacked**
+4. Выберите папку `apps/clipper-fork/dist-extension/`
 
-1. Open a web page (logged in if it requires authentication)
-2. Click the AuthClip extension icon in the browser toolbar
-3. The popup shows connection status — ensure it says **"Connected to Obsidian AuthClip plugin"**
-4. Click **"Clip with Assets"**
-5. Wait for the process to complete
-6. The note and images are saved in your Obsidian vault
+#### Edge
 
-### What gets saved
+1. Откройте `edge://extensions/`
+2. Включите **Developer mode** (переключатель на левой панели)
+3. Нажмите **Load unpacked**
+4. Выберите ту же папку `dist-extension/`
 
-- A **markdown note** with frontmatter (source URL, title, capture date, asset counts)
-- **Image files** from the page content, downloaded with your browser's session cookies
-- Markdown image references are rewritten to point to local files
+### 3. Использование
+
+1. Откройте любую веб-страницу (желательно залогиненную, если сайт требует авторизацию)
+2. Нажмите иконку **AuthClip** в панели браузера
+3. Убедитесь что статус **"Connected to Obsidian AuthClip plugin"** — если нет, проверьте что Obsidian открыт и плагин включён
+4. Нажмите **"Clip with Assets"**
+5. Дождитесь завершения — расширение скачает картинки с cookies вашей сессии и отправит их в Obsidian
+6. Зайдите в Obsidian — заметка с картинками появится в папке `Clippings/`
+
+### Что сохраняется
+
+- **Markdown-заметка** с frontmatter (URL источника, заголовок, дата, количество ассетов)
+- **Файлы изображений** из контента страницы, скачанные с cookies браузерной сессии
+- Ссылки на изображения в markdown переписаны на локальные (`![[image.jpg]]` или `![](./path)`)
 
 ### Plugin settings
 
