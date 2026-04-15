@@ -2,329 +2,200 @@
 
 ## Обзор
 
-GRACE (Governed Reactive Architecture for Code Engineering) — это методология управления разработкой через формализованные артефакты. Каждый артефакт — это XML-документ в `docs/`, который служит единой точкой правды для агентов (LLM), работающих с кодом. AGENTS.md в корне — это протокол, которому подчиняются все агенты.
-
-Ниже — описание того, что именно GRACE знает о проекте AuthClip, по каждому файлу.
+GRACE (Governed Reactive Architecture for Code Engineering) — методология управления разработкой через формализованные артефакты. Каждый артефакт — XML-документ в `docs/`, единая точка правды для агентов. `AGENTS.md` в корне — протокол, которому подчиняются все агенты.
 
 ---
 
-## 1. AGENTS.md — Инженерный протокол
+## История изменений
 
-**Назначение:** Корневой файл, который загружается в контекст каждого агента. Определяет правила игры.
+### v0.3.0 → v0.3.0-current (дельта от предыдущего состояния grace.md)
 
-**Что GRACE знает отсюда:**
+Предыдущая версия grace.md описывала **начальное** состояние — GRACE-артефакты только что инициализированы, фазы все "pending", граф знаний покрывал ~13% экспортов. Ниже — что изменилось с тех пор.
 
-- **Ключевые слова проекта:** obsidian, web-clipper, browser-extension, asset-discovery, markdown-rewrite, local-first, attachment-writer
-- **Аннотация:** AuthClip — это форк Obsidian Web Clipper + companion plugin, который сохраняет изображения и вложения с авторизованных страниц как локальные файлы vault
-- **6 принципов работы:**
-  1. Никакого кода без контракта (MODULE_CONTRACT)
-  2. Семантическая разметка — это навигационная структура (START_BLOCK / END_BLOCK)
-  3. Граф знаний всегда актуален
-  4. Верификация — первоклассный артефакт
-  5. Сверху вниз: требования → стек → план → верификация → код
-  6. Управляемая автономия: агенты свободны в «как», но не в «что»
-- **Формат семантической разметки** на уровне модуля, функции и блока
-- **Конвенция логирования:** `[Module][function][BLOCK_NAME]` с обязательной редакцией секретов
-- **Правила модификаций:** читать контракт перед редактированием, обновлять граф знаний при изменении модулей, обновлять план верификации при изменении тестов
+#### Артефакты
+
+| Артефакт | Было | Стало |
+|---|---|---|
+| `requirements.xml` | 6 use cases, 5 constraints, открытый вопрос о транспорте | **8 use cases** (+UC-007 auth token, +UC-008 health endpoint), **7 constraints** (+127.0.0.1 only, +HTTP transport), вопрос о транспорте **решён** |
+| `development-plan.xml` | 4 модуля, все фазы "pending", `validateCapturePackage` в shared-types, `dedupByHash` как реализованный | Фазы **1-3 → done**, `validateCapturePackage` **перемещён в M-OBSIDIAN-PLUGIN**, `dedupByHash` → **Phase-4 pending**, транспорт задокументирован (localhost HTTP port 27124) |
+| `knowledge-graph.xml` | 4 модуля, ~4 аннотации (13% покрытия) | 4 модуля, **30+ аннотаций**, все публичные экспорты покрыты, CrossLinks актуальны |
+| `verification-plan.xml` | 5 критических потоков, 9 сценариев для plugin | **7 критических потоков** (+VF-006 auth rejection, +VF-007 manifest validation), **17+ сценариев для plugin**, фазовые гейты обновлены |
+| `technology.xml` | Без изменений | Без изменений (был точен изначально) |
+| `operational-packets.xml` | Без изменений | Без изменений (шаблон) |
+
+#### Разметка исходного кода
+
+| Метрика | Было | Стало |
+|---|---|---|
+| Файлы с MODULE_CONTRACT | 0 | **27** |
+| Семантические блоки (START/END_BLOCK) | 0 | **9 пар** (0 непарных) |
+| CHANGE_SUMMARY | 0 | **2** |
+
+Покрытие GRACE-разметкой: 26 из 27 AuthClip-файлов (96%). Один файл без контракта: `clip-transaction.ts` (есть MODULE_MAP и блоки, но нет MODULE_CONTRACT — отмечено в grace-status.md).
+
+Не размечены намеренно:
+- 7 upstream-файлов clipper-fork (content.ts, background.ts, html-to-markdown.ts, popup.ts, dom-utils.ts, highlighter.ts, highlighter-overlays.ts)
+- 50+ файлов фильтров template-engine
+- Внутренние файлы template-engine (resolver.ts, shared.ts, parser-utils.ts и т.д.)
+- .d.ts файлы
+
+#### Тестовое покрытие
+
+| Пакет | Тесты есть? |
+|---|---|
+| shared-types | ❌ 0 файлов (директория не существует) |
+| template-engine | ✅ 51 файл (3 `__tests__` + 48 co-located filter tests) |
+| clipper-fork | ❌ 0 файлов |
+| obsidian-plugin | ❌ 0 файлов |
+
+verification-plan.xml описывает 39 сценариев, но только template-engine покрыт тестами.
+
+#### Инфраструктура
+
+| Что | Было | Стало |
+|---|---|---|
+| GitHub Actions | Нет | `.github/workflows/release.yml` — авто-релиз при push в master |
+| Релизы | Нет | [v0.2.0](https://github.com/kucheryavenkovn/authclip/releases/tag/v0.2.0) — Chrome extension + Obsidian plugin zip |
+| grace-status.md | Нет | Здоровый отчёт с метриками |
+
+#### Исправленные баги
+
+- **LinkMapEntry**: тип имел поле `path`, а Zod-схема и все использования — `from`. Исправлено: `path` → `from`.
 
 ---
 
-## 2. docs/requirements.xml — Требования
+## Текущее состояние артефактов
 
-**Назначение:** Продуктовые требования, пользовательские сценарии, ограничения и риски.
+### 1. AGENTS.md — Инженерный протокол
 
-**Что GRACE знает отсюда:**
+Корневой файл, загружаемый в контекст каждого агента.
 
-### Роли пользователей
-- **KnowledgeWorker** — клипирует статьи с авторизованных сайтов
-- **Researcher** — архивирует знания из внутренних порталов, helpdesk, LMS
-- **PowerUser** — управляет шаблонами имен, путями, форматом ссылок, дедупликацией
+**Содержимое:**
+- Ключевые слова: obsidian, web-clipper, browser-extension, asset-discovery, markdown-rewrite, local-first, attachment-writer
+- 6 принципов GRACE
+- Формат семантической разметки (модуль → функция → блок)
+- Конвенция логирования `[Module][function][BLOCK_NAME]`
+- Правила модификаций (читать контракт → редактировать → обновить граф → обновить верификацию)
 
-### 6 пользовательских сценариев (Use Cases)
+### 2. docs/requirements.xml — v0.3.0
+
+**8 пользовательских сценариев:**
+
 | ID | Сценарий | Приоритет |
 |---|---|---|
 | UC-001 | Клипирование авторизованной страницы с локальными ассетами | high |
 | UC-002 | Просмотр и отбор вложений перед сохранением | high |
 | UC-003 | Частичный успех при ошибках скачивания | high |
-| UC-004 | Настройка папок, стиля ссылок и политики дедупликации | medium |
+| UC-004 | Настройка папок, стиля ссылок и дедупликации | medium |
 | UC-005 | Дедупликация изображений по hash | medium |
 | UC-006 | Fallback при недоступности плагина | high |
+| UC-007 | Настройка auth token для защиты HTTP-эндпоинта | medium |
+| UC-008 | Проверка доступности плагина через /v1/health | medium |
 
-### Чего НЕТ в v1 (Non-Goals)
-- Видео и потоковые медиа
-- Полный краулинг сайтов
-- OCR и рендеринг PDF
-- Автоматический re-login
-- Обход DRM/CAPTCHA
-- Мобильная поддержка
-- Облачный бэкенд, мультипользовательский режим
+**7 ограничений:**
+1. Только локальная работа
+2. Секреты никогда в логах/markdown/frontmatter
+3. Payload: до 50 МБ HTTP body, 25 МБ на вложение
+4. Chrome/Edge + Obsidian Desktop
+5. Форк не ломает стандартный Web Clipper
+6. HTTP-сервер только на 127.0.0.1
+7. Транспорт: localhost HTTP (порт 27124), опциональный X-AuthClip-Token
 
-### Ограничения
-- Только локальная работа — никакого облачного relay
-- Секреты никогда не попадают в логи, markdown, frontmatter или телеметрию
-- Payload ограничен: до 20 изображений, ~25 МБ
-- Chrome/Edge + Obsidian Desktop на Windows/macOS/Linux
-- Форк не ломает стандартный Web Clipper
+**Решённый вопрос:** транспорт — localhost HTTP endpoint (не Obsidian URI, не command bridge).
 
-### Риски
-1. Нестандартная загрузка изображений (lazy-load, JS-injected src)
-2. Слишком большие payload
-3. Конфликты с upstream Web Clipper
-4. Расхождение между извлечением markdown и маппингом URL
-5. Path traversal и небезопасные имена файлов
-6. XSS через несанированный HTML
+### 3. docs/technology.xml — v0.2.0
 
-### Открытые вопросы
-- Транспорт: localhost HTTP vs Obsidian URI vs command bridge?
-- Максимальный payload до необходимости chunking?
-- Поддержка вложенных iframe в v2?
-- Сохранять ли favicon/og:image отдельно?
-- Режим inline data URI как fallback?
-- Очередь batch clipping?
+Стек без изменений. Ключевые зависимости: TypeScript 5.6+, Zod ^3.23, esbuild ^0.28, webpack ^5.106, vitest ^3.0, dayjs, defuddle, dompurify.
 
----
+### 4. docs/development-plan.xml — v0.3.0
 
-## 3. docs/technology.xml — Технологический стек
+**4 модуля, 4 фазы:**
 
-**Назначение:** Фиксация стека, версий, инструментов и наблюдаемости.
-
-**Что GRACE знает отсюда:**
-
-### Стек
-- **Runtime:** Node.js >= 20.0.0
-- **Язык:** TypeScript 5.6+ (target ES2022, модули ESNext, moduleResolution bundler)
-- **Фреймворки:** Obsidian Plugin API (latest) + Chrome Extension APIs (MV3)
-
-### Ключевые зависимости
-| Библиотека | Версия | Назначение |
+| Фаза | Название | Статус |
 |---|---|---|
-| zod | ^3.23.0 | Runtime-валидация схем (CapturePackage, ResultReport, Settings) |
-| dayjs | ^1.11.13 | Форматирование дат в шаблонах и frontmatter |
-| defuddle | ^0.16.0 | Извлечение контента статьи из веб-страниц |
-| dompurify | ^3.4.0 | Санитизация HTML перед конвертацией в markdown |
-| esbuild | ^0.28.0 | Бандлинг плагина и расширения |
-| webpack | ^5.106.1 | Production-сборка браузерного расширения |
-| vitest | ^3.0.0 | Тест-раннер для всех пакетов |
+| Phase-1 | Shared Protocol & Types | **done** |
+| Phase-2 | Browser Capture MVP | **done** |
+| Phase-3 | Obsidian Plugin MVP | **done** |
+| Phase-4 | Integration & Polish | pending |
 
-### Инструменты
-- **Workspace:** pnpm workspaces 9.x
-- **Бандлер плагина:** esbuild 0.28.x
-- **Бандлер расширения:** webpack 5.x
-- **Линтер:** `tsc --noEmit` (нет отдельного ESLint)
-- **Форматтер:** нет
-- **Тест-раннер:** vitest 3.x
+**4 потока данных:**
+- DF-CLIP_FULL — полный клип (14 шагов)
+- DF-CLIP_PARTIAL — частичный успех
+- DF-DEDUP — дедупликация (пока name conflict via generateSafeName, hash — Phase-4)
+- DF-PLUGIN_UNAVAILABLE — fallback при недоступности
 
-### Стратегия тестирования
-- **Модульный уровень:** `pnpm --filter <package> test` — быстрые детерминированные тесты
-- **Уровень волны:** `pnpm -r --stream test` — интеграция затронутых поверхностей
-- **Уровень фазы:** `pnpm test` — полная регрессия монорепо
-- **Мокинг:** предпочтение фейкам и узким стабам, jsdom для DOM-тестов
+**Ключевые архитектурные решения:**
+- HTTP localhost (порт 27124), не Obsidian URI
+- Дедуп: только name conflict (generateSafeName counter), SHA-256 hash — Phase-4
+- Frontmatter: source_title, source_url, captured_at, clipper_mode, author, description, published, site_name, domain, language, word_count, assets_saved, assets_failed
+- VaultAdapter — интерфейс с ObsidianVaultAdapter как реализация (тестируемость)
 
-### Наблюдаемость
-- **Логгер:** console-based structured logging (нет отдельной библиотеки)
-- **Формат логов:** `[Module][function][BLOCK_NAME] message`
-- **Обязательные поля:** correlationId, phase, assetCount, resultStatus
-- **Редакция:** никогда не логировать токены, cookies, auth headers, session tokens
+### 5. docs/knowledge-graph.xml — v0.3.0
 
-### Форма поставки
-Локальный монорепо. Расширение — Chrome/Edge MV3. Плагин — manual-install .zip. Без облака.
+**30+ аннотаций** покрывают все публичные экспорты:
 
----
+| Модуль | Зависимости | Аннотаций |
+|---|---|---|
+| M-SHARED-TYPES | нет | 16 |
+| M-TEMPLATE-ENGINE | M-SHARED-TYPES | 18 |
+| M-CLIPPER-FORK | M-SHARED-TYPES, M-TEMPLATE-ENGINE | 12 |
+| M-OBSIDIAN-PLUGIN | M-SHARED-TYPES | 18 |
 
-## 4. docs/development-plan.xml — План разработки
+**3 CrossLink:**
+- M-CLIPPER-FORK → M-SHARED-TYPES (imports types, schemas, sanitization)
+- M-CLIPPER-FORK → M-TEMPLATE-ENGINE (uses for note rendering)
+- M-OBSIDIAN-PLUGIN → M-SHARED-TYPES (imports types, schemas, result builder)
 
-**Назначение:** Модули, их контракты, потоки данных, порядок реализации и политика выполнения.
+### 6. docs/verification-plan.xml — v0.3.0
 
-**Что GRACE знает отсюда:**
+**7 критических потоков:**
 
-### 4 модуля
+| ID | Название | Приоритет |
+|---|---|---|
+| VF-001 | FullClipHappyPath | high |
+| VF-002 | PartialSuccess | high |
+| VF-003 | NameConflictResolution | medium |
+| VF-004 | PluginUnavailable | high |
+| VF-005 | TokenRedaction | high |
+| VF-006 | AuthTokenRejection | medium |
+| VF-007 | ManifestValidation | high |
 
-#### M-SHARED-TYPES (Layer 0, UTILITY)
-- **Путь:** `packages/shared-types/src/index.ts`
-- **Назначение:** Общие TypeScript-типы, Zod-схемы и константы
-- **Экспорты:** CapturePackage, AttachmentPayload, ResultReport, ClipSettings, validateCapturePackage
-- **Зависимости:** нет
-- **Ошибки:** VALIDATION_FAILED
+**39 тестовых сценариев** по модулям:
+- V-M-SHARED-TYPES: 7 сценариев
+- V-M-TEMPLATE-ENGINE: 5 сценариев
+- V-M-CLIPPER-FORK: 10 сценариев
+- V-M-OBSIDIAN-PLUGIN: 17 сценариев
 
-#### M-TEMPLATE-ENGINE (Layer 1, CORE_LOGIC)
-- **Путь:** `packages/template-engine/src/index.ts`
-- **Назначение:** Рендеринг шаблонов имен заметок и контента с 50+ фильтрами
-- **Экспорты:** renderTemplate, tokenize
-- **Зависимости:** M-SHARED-TYPES
-- **Ошибки:** TEMPLATE_PARSE_ERROR, FILTER_NOT_FOUND
+**4 фазовых гейта** с командами и требуемыми доказательствами.
 
-#### M-CLIPPER-FORK (Layer 2, ENTRY_POINT)
-- **Путь:** `apps/clipper-fork/src/`
-- **Назначение:** Браузерное расширение — обнаружение, скачивание и упаковка ассетов
-- **Экспорты:** discoverAssets, fetchAsset, buildCapturePackage, sendToObsidian
-- **Зависимости:** M-SHARED-TYPES, M-TEMPLATE-ENGINE
-- **Ошибки:** DISCOVERY_FAILED, FETCH_FAILED, FETCH_FORBIDDEN, FETCH_TIMEOUT, PAYLOAD_TOO_LARGE, PLUGIN_UNAVAILABLE
+### 7. docs/operational-packets.xml — v0.1.0
 
-#### M-OBSIDIAN-PLUGIN (Layer 2, ENTRY_POINT)
-- **Путь:** `apps/obsidian-plugin/src/`
-- **Назначение:** Obsidian-плагин — прием пакетов, запись вложений, перезапись markdown, создание заметок
-- **Экспорты:** receiveCapturePackage, writeAttachments, rewriteMarkdown, dedupByHash, createNote
-- **Зависимости:** M-SHARED-TYPES
-- **Ошибки:** MANIFEST_INVALID, WRITE_FAILED, REWRITE_FAILED
-
-### 4 потока данных
-
-#### DF-CLIP_FULL — Полный клип
-1. Расширение находит ассеты (img, srcset, picture, background-image)
-2. Пользователь отбирает нужные в preview UI
-3. Расширение скачивает ассеты в контексте браузерной сессии
-4. Формирует CapturePackage (markdown + attachments + linkMap)
-5. Отправляет в Obsidian-плагин через транспорт
-6. Плагин валидирует манифест
-7. Проверяет дедуп по hash (если включен)
-8. Записывает файлы вложений в vault
-9. Перезаписывает URL в markdown на локальные ссылки
-10. Создает заметку
-11. Возвращает ResultReport
-12. Расширение показывает итог пользователю
-
-#### DF-CLIP_PARTIAL — Частичный успех
-При ошибке скачивания части ассетов: заметка сохраняется, неудачные ассеты попадают в frontmatter и отчет.
-
-#### DF-DEDUP — Дедупликация
-SHA-256 hash совпадает с существующим файлом → пропускаем запись, ссылаемся на существующий.
-
-#### DF-PLUGIN_UNAVAILABLE — Плагин недоступен
-Расширение показывает ошибку и предлагает "Copy markdown only" fallback.
-
-### 4 фазы реализации
-
-| Фаза | Название | Цель | Статус |
-|---|---|---|---|
-| Phase-1 | Shared Protocol & Types | Типы, схемы, валидация | pending |
-| Phase-2 | Browser Capture MVP | Обнаружение, скачивание, упаковка ассетов | pending |
-| Phase-3 | Obsidian Plugin MVP | Приемник, запись, перезапись, создание заметок | pending |
-| Phase-4 | Integration & Polish | Дедуп, UI, настройки, безопасность | pending |
-
-### Политика выполнения
-- **Профиль:** balanced
-- **Контроллер владеет:** development-plan.xml, knowledge-graph.xml, verification-plan.xml
-- **Воркер владеет:** только исходники модулей и локальные тесты в рамках утвержденного scope
+Шаблон без изменений. 4 типа пакетов: ExecutionPacket, GraphDelta, VerificationDelta, FailurePacket.
 
 ---
 
-## 5. docs/knowledge-graph.xml — Граф знаний
+## Следующие шаги
 
-**Назначение:** Навигационная карта проекта для агентов. Уникальные ID-теги вместо обобщенных тегов.
+По результатам grace-status.md:
 
-**Что GRACE знает отсюда:**
-
-### Узлы графа
-- **M-SHARED-TYPES** → без зависимостей (базовый слой)
-- **M-TEMPLATE-ENGINE** → зависит от M-SHARED-TYPES
-- **M-CLIPPER-FORK** → зависит от M-SHARED-TYPES, M-TEMPLATE-ENGINE
-- **M-OBSIDIAN-PLUGIN** → зависит от M-SHARED-TYPES
-
-### Перекрестные связи (CrossLinks)
-- M-CLIPPER-FORK → M-SHARED-TYPES: импортирует типы и схемы
-- M-CLIPPER-FORK → M-TEMPLATE-ENGINE: использует для рендеринга заметок
-- M-OBSIDIAN-PLUGIN → M-SHARED-TYPES: импортирует типы и схемы
-
-### Публичные интерфейсы каждого модуля
-Для каждого модуля перечислены его ключевые типы и функции с назначением. Агент может по графу определить, какие экспорты доступны и от каких модулей они зависят.
+1. Добавить MODULE_CONTRACT в `clip-transaction.ts`
+2. Написать тесты для shared-types (7 сценариев)
+3. Написать тесты для obsidian-plugin (17 сценариев)
+4. Написать тесты для clipper-fork (10 сценариев)
+5. Запустить `$grace-verification` после появления тестов
 
 ---
 
-## 6. docs/verification-plan.xml — План верификации
-
-**Назначение:** Стратегия тестирования, критические потоки, контракты верификации модулей, фазовые гейты.
-
-**Что GRACE знает отсюда:**
-
-### Глобальная политика
-- Детерминированные проверки优先
-- Формат логов: `[Module][function][BLOCK_NAME]`
-- Редакция: никогда не логировать секреты
-
-### 5 критических потоков верификации
-
-| ID | Название | Сценарий | Приоритет |
-|---|---|---|---|
-| VF-001 | FullClipHappyPath | Клип с 5 картинками, все скачались, ссылки переписаны | high |
-| VF-002 | PartialSuccess | 2 из 5 не скачались, заметка сохранена с отчетом | high |
-| VF-003 | Deduplication | Hash совпал — дубль не создан | medium |
-| VF-004 | PluginUnavailable | Плагин не отвечает — понятная ошибка + fallback | high |
-| VF-005 | TokenRedaction | В логах и frontmatter нет токенов и cookies | high |
-
-Для каждого потока определены обязательные log-маркеры и последовательности трассировки (trace sequences).
-
-### Верификация модулей
-
-Для каждого из 4 модулей определены:
-- **Файлы тестов** (пути)
-- **Команды проверки** (pnpm --filter ... test + typecheck)
-- **Сценарии** (success/failure с описанием)
-- **Обязательные log-маркеры**
-- **Trace-утверждения** (например: "MANIFEST_INVALID не должен вызывать vault writes")
-- **Wave и Phase follow-up** (что проверять на уровне волны и фазы)
-
-Пример: для M-OBSIDIAN-PLUGIN описано 9 сценариев, включая path traversal, filename sanitization, partial success, dedup и wikilink/relative режимы перезаписи.
-
-### 4 фазовых гейта
-
-Каждый гейт содержит:
-- Цель фазы
-- Команды для проверки
-- Требуемые доказательства
-
-Финальный гейт (Phase-4) требует: дедуп работает, токены редуцированы, path traversal отклонен, все тесты зеленые.
-
----
-
-## 7. docs/operational-packets.xml — Операционные пакеты
-
-**Назначение:** Шаблоны для коммуникации между контроллером и воркерами во время выполнения.
-
-**Что GRACE знает отсюда:**
-
-### 4 типа пакетов
-
-1. **ExecutionPacket** — контроллер → воркер
-   - module-id, module-name, purpose
-   - write-scope (список файлов, которые воркер имеет право трогать)
-   - contract-excerpt (выдержка из контракта модуля)
-   - graph-entry-excerpt (выдержка из графа знаний)
-   - dependency-contract-summaries (контракты зависимостей)
-   - verification-excerpt (выдержка из плана верификации)
-   - expected-graph-delta-fields и expected-verification-delta-fields
-
-2. **GraphDelta** — воркер → контроллер
-   - imports-added/removed
-   - exports-added/removed
-   - annotations-added/removed
-   - cross-links-added/removed
-   - Только реально изменившиеся факты
-
-3. **VerificationDelta** — воркер → контроллер
-   - test-files-added/removed
-   - module-checks (команды)
-   - required-log-markers
-   - required-trace-assertions
-   - wave-follow-up и phase-follow-up
-
-4. **FailurePacket** — верификатор → фиксер
-   - scenario, contract-ref
-   - expected-evidence vs observed-evidence
-   - first-divergent-block
-   - suggested-next-action
-
----
-
-## Сводка: что GRACE знает о проекте
+## Сводка
 
 | Аспект | Детали |
 |---|---|
 | **Продукт** | AuthClip — форк Web Clipper + Obsidian-плагин для локального сохранения картинок с авторизованных сайтов |
-| **Архитектура** | Монорепо (pnpm workspaces), 2 приложения + 2 shared-пакета |
-| **Стек** | TypeScript 5.6+, Node 20+, ES2022, Vitest 3, Zod 3, esbuild, webpack |
-| **Модули** | shared-types (layer 0) → template-engine (layer 1) → clipper-fork + obsidian-plugin (layer 2) |
-| **Потоки данных** | Полный клип (12 шагов), частичный успех, дедуп, fallback при недоступности плагина |
-| **Критические проверки** | Happy path, partial success, dedup, plugin unavailable, token redaction |
-| **Фазы** | 4 фазы: типы → browser MVP → plugin MVP → интеграция и безопасность |
-| **Безопасность** | Редакция всех секретов в логах, санитизация filenames, защита от path traversal |
-| **Поставка** | Локально, без облака, Chrome/Edge MV3 + Obsidian manual-install .zip |
+| **Архитектура** | Монорепо (pnpm), 2 приложения + 2 shared-пакета, 4 слоя |
+| **Стек** | TypeScript 5.6+, Node 20+, Zod 3, esbuild, webpack, vitest 3 |
+| **Реализация** | Фазы 1-3 готовы, Phase-4 pending (hash dedup, CSS bg, security) |
+| **Разметка** | 27 файлов с контрактами, 9 семантических блоков, 0 непарных |
+| **Тесты** | template-engine покрыт (51 тест), остальные 3 модуля — 0 тестов |
+| **Безопасность** | Редакция секретов в логах, санитизация filenames, 127.0.0.1 only, опциональный auth token |
+| **CI/CD** | GitHub Actions — авто-релиз при push в master |
+| **Релизы** | v0.2.0 — Chrome extension + Obsidian plugin |
