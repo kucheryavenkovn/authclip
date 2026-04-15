@@ -251,6 +251,9 @@ async function handleClipPage(
 			return;
 		}
 
+		console.log("[AuthClip:bg] pageData received. markdown length:", pageData?.markdown?.length, "imageUrls:", pageData?.imageUrls?.length);
+		console.log("[AuthClip:bg] markdown preview:", pageData?.markdown?.substring(0, 300));
+
 		const {
 			title,
 			url,
@@ -402,11 +405,21 @@ async function handleClipPage(
 
 function extractImageUrls(markdown: string): string[] {
 	const urls: string[] = [];
-	const imgRegex = /!\[.*?\]\(([^)]+)\)/g;
+	const seen = new Set<string>();
+	const mdImgRegex = /!\[.*?\]\(([^)]+)\)/g;
 	let match: RegExpExecArray | null;
-	while ((match = imgRegex.exec(markdown)) !== null) {
+	while ((match = mdImgRegex.exec(markdown)) !== null) {
 		const src = match[1];
-		if (src && !src.startsWith("data:") && !src.startsWith("blob:")) {
+		if (src && !src.startsWith("data:") && !src.startsWith("blob:") && !seen.has(src)) {
+			seen.add(src);
+			urls.push(src);
+		}
+	}
+	const htmlImgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+	while ((match = htmlImgRegex.exec(markdown)) !== null) {
+		const src = match[1];
+		if (src && !src.startsWith("data:") && !src.startsWith("blob:") && !seen.has(src)) {
+			seen.add(src);
 			urls.push(src);
 		}
 	}

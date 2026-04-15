@@ -1,0 +1,134 @@
+<RequirementsAnalysis VERSION="0.3.0">
+  <Project>
+    <name>AuthClip</name>
+    <annotation>Auth-aware Obsidian Web Clipper fork + companion plugin that saves images/attachments from authenticated pages as local vault files</annotation>
+    <keywords>obsidian, web-clipper, browser-extension, asset-discovery, markdown-rewrite, local-first, attachment-writer</keywords>
+  </Project>
+
+  <Actors>
+    <actor-KnowledgeWorker>User who clips articles from authenticated sites so they open in Obsidian without re-login.</actor-KnowledgeWorker>
+    <actor-Researcher>User who archives knowledge from internal portals, helpdesk, LMS, Confluence-like systems, and paid media.</actor-Researcher>
+    <actor-PowerUser>User who controls note naming templates, folder paths, link format, dedup policy, and error behavior.</actor-PowerUser>
+  </Actors>
+
+  <UseCases>
+    <UC-001>
+      <Actor>KnowledgeWorker</Actor>
+      <Action>Clips an authenticated page with local assets</Action>
+      <Goal>Obtain a markdown note with locally saved images that opens offline in Obsidian</Goal>
+      <Preconditions>Browser is on an authenticated page; Obsidian is running with the plugin active</Preconditions>
+      <AcceptanceCriteria>Note exists in vault with all discoverable images saved locally and markdown references rewritten</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-CLIP_FULL</RelatedFlows>
+    </UC-001>
+
+    <UC-002>
+      <Actor>KnowledgeWorker</Actor>
+      <Action>Reviews and deselects unwanted attachments before clipping</Action>
+      <Goal>Exclude junk images (trackers, icons, decorative elements) from the clipped note</Goal>
+      <Preconditions>Extension has discovered assets on the current page</Preconditions>
+      <AcceptanceCriteria>Preview UI shows asset list with checkboxes; only selected assets are downloaded and saved</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-CLIP_FULL</RelatedFlows>
+    </UC-002>
+
+    <UC-003>
+      <Actor>KnowledgeWorker</Actor>
+      <Action>Clips a page where some images fail to download</Action>
+      <Goal>Note still saves with partial content; failures are reported clearly</Goal>
+      <Preconditions>At least one asset fetch fails (timeout, 403, CORS)</Preconditions>
+      <AcceptanceCriteria>Note is saved; failed assets listed in frontmatter and UI report; successful assets linked locally</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-CLIP_PARTIAL</RelatedFlows>
+    </UC-003>
+
+    <UC-004>
+      <Actor>PowerUser</Actor>
+      <Action>Configures attachment folder, link style, and dedup policy</Action>
+      <Goal>Control where attachments go and how links are formatted</Goal>
+      <Preconditions>Obsidian plugin is installed</Preconditions>
+      <AcceptanceCriteria>Settings persisted in Obsidian plugin UI; subsequent clips respect configured paths and formats</AcceptanceCriteria>
+      <Priority>medium</Priority>
+      <RelatedFlows>DF-CLIP_FULL</RelatedFlows>
+    </UC-004>
+
+    <UC-005>
+      <Actor>PowerUser</Actor>
+      <Action>Clips a page with duplicate images already in vault</Action>
+      <Goal>Reuse existing files instead of creating duplicates</Goal>
+      <Preconditions>Dedup is enabled; a file with the same hash already exists in vault</Preconditions>
+      <AcceptanceCriteria>No duplicate file created; note links to the existing file</AcceptanceCriteria>
+      <Priority>medium</Priority>
+      <RelatedFlows>DF-DEDUP</RelatedFlows>
+    </UC-005>
+
+    <UC-006>
+      <Actor>KnowledgeWorker</Actor>
+      <Action>Clips page when Obsidian plugin is not running</Action>
+      <Goal>Get a clear error and fallback option without losing prepared markdown</Goal>
+      <Preconditions>Obsidian is not running or plugin is inactive</Preconditions>
+      <AcceptanceCriteria>Extension shows clear error; offers "copy markdown only" fallback; no data loss</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-PLUGIN_UNAVAILABLE</RelatedFlows>
+    </UC-006>
+
+    <UC-007>
+      <Actor>PowerUser</Actor>
+      <Action>Configures auth token for secure communication between extension and plugin</Action>
+      <Goal>Prevent unauthorized access to the plugin HTTP endpoint</Goal>
+      <Preconditions>Plugin is installed; auth token is set in settings</Preconditions>
+      <AcceptanceCriteria>Requests without valid X-AuthClip-Token header are rejected with 401</AcceptanceCriteria>
+      <Priority>medium</Priority>
+      <RelatedFlows>DF-CLIP_FULL</RelatedFlows>
+    </UC-007>
+
+    <UC-008>
+      <Actor>Extension</Actor>
+      <Action>Checks plugin availability before sending capture package</Action>
+      <Goal>Detect early whether the plugin is reachable</Goal>
+      <Preconditions>Extension is about to send a capture package</Preconditions>
+      <AcceptanceCriteria>GET /v1/health returns 200 when plugin is running</AcceptanceCriteria>
+      <Priority>medium</Priority>
+      <RelatedFlows>DF-PLUGIN_UNAVAILABLE</RelatedFlows>
+    </UC-008>
+  </UseCases>
+
+  <NonGoals>
+    <item-1>Video and streaming media clipping in v1.</item-1>
+    <item-2>Full site crawling or archival.</item-2>
+    <item-3>OCR or PDF rendering.</item-3>
+    <item-4>Automatic re-login or session refresh.</item-4>
+    <item-5>DRM, CAPTCHA, or anti-bot circumvention.</item-5>
+    <item-6>Sync of source page changes after clipping.</item-6>
+    <item-7>Mobile support in v1.</item-7>
+    <item-8>Cloud backend, server-side storage, account system, or collaborative clipping.</item-8>
+  </NonGoals>
+
+  <Constraints>
+    <constraint-1>Must run locally — no cloud relay or external data transmission.</constraint-1>
+    <constraint-2>Secrets (cookies, auth headers, tokens) must never appear in logs, markdown, frontmatter, or telemetry.</constraint-2>
+    <constraint-3>Payload size capped at 50 MB for HTTP body, 25 MB default per-attachment.</constraint-3>
+    <constraint-4>Must support Chrome and Edge browsers; Obsidian Desktop on Windows/macOS/Linux.</constraint-4>
+    <constraint-5>Fork must not break standard Web Clipper behavior (clipping without local assets).</constraint-5>
+    <constraint-6>HTTP server binds to 127.0.0.1 only — no remote access.</constraint-6>
+    <constraint-7>Transport: localhost HTTP endpoint (default port 27124), optional auth token via X-AuthClip-Token header.</constraint-7>
+  </Constraints>
+
+  <Risks>
+    <risk-1>Sites with non-standard image loading (lazy-load, intersection observers, JS-injected src) may miss assets.</risk-1>
+    <risk-2>Large pages with many high-res images may exceed practical payload limits.</risk-2>
+    <risk-3>Upstream Web Clipper updates may conflict with fork patches.</risk-3>
+    <risk-4>Divergence between markdown extraction and attachment URL mapping could leave broken links.</risk-4>
+    <risk-5>Path traversal or unsafe filenames from remote URLs could compromise vault integrity.</risk-5>
+    <risk-6>XSS or unsafe markdown injection from unsanitized HTML content.</risk-6>
+  </Risks>
+
+  <OpenQuestions>
+    <question-1>RESOLVED: Transport is localhost HTTP endpoint (port 27124) with optional auth token.</question-1>
+    <question-2>Maximum payload before chunking is required? Current: 50 MB HTTP body limit.</question-2>
+    <question-3>Support for nested iframes in v2?</question-3>
+    <question-4>Should favicon/og:image be saved separately?</question-4>
+    <question-5>Inline data URI fallback mode?</question-5>
+    <question-6>Batch clipping queue?</question-6>
+  </OpenQuestions>
+</RequirementsAnalysis>

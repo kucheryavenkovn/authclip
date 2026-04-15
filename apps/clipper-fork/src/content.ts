@@ -1,6 +1,7 @@
 import Defuddle from "defuddle";
 import { createMarkdownContent } from "defuddle/full";
 import * as highlighter from "./highlighter";
+import { htmlToMarkdown } from "./html-to-markdown";
 
 declare global {
 	interface Window {
@@ -85,6 +86,82 @@ function resolveRelativeUrls(doc: Document): void {
 	});
 }
 
+function findArticle(doc: Document): Element {
+	const explicit = doc.querySelector("article")
+		?? doc.querySelector('[role="main"]')
+		?? doc.querySelector("main");
+	if (explicit) {
+		const textLen = getTextDensity(explicit);
+		console.log("[AuthClip:content] explicit article found:", explicit.tagName, "textDensity:", textLen);
+		if (textLen > 0.3) return explicit;
+	}
+
+	const candidates = doc.querySelectorAll("div, section");
+	let best: Element = doc.body;
+	let bestScore = -1;
+
+	for (const el of candidates) {
+		const score = scoreArticleCandidate(el);
+		if (score > bestScore) {
+			bestScore = score;
+			best = el;
+		}
+	}
+
+	console.log("[AuthClip:content] heuristic picked:", best.tagName, best.className?.substring(0, 80), "score:", bestScore);
+	return best;
+}
+
+function scoreArticleCandidate(el: Element): number {
+	const tag = el.tagName.toLowerCase();
+	const cls = (el.className || "").toLowerCase();
+	const id = (el.id || "").toLowerCase();
+
+	const skipPatterns = ["header", "footer", "nav", "sidebar", "menu", "comment", "modal", "overlay", "popup", "toolbar"];
+	for (const p of skipPatterns) {
+		if (cls.includes(p) || id.includes(p) || tag === p) return -1;
+	}
+
+	const text = (el.textContent || "").trim();
+	const textLen = text.length;
+	if (textLen < 200) return -1;
+
+	const html = el.innerHTML;
+	const imgCount = (html.match(/<img[\s>]/gi) || []).length;
+	const pCount = (html.match(/<p[\s>]/gi) || []).length;
+	const hCount = (html.match(/<h[1-6][\s>]/gi) || []).length;
+
+	const density = textLen / Math.max(html.length, 1);
+
+	const contentHints = ["content", "article", "post", "entry", "body", "text", "document", "mce", "tinymce", "editable"];
+	let hintBonus = 0;
+	for (const h of contentHints) {
+		if (cls.includes(h) || id.includes(h)) { hintBonus += 10; break; }
+	}
+
+	let depth = 0;
+	let node: Element | null = el;
+	while (node) { depth++; node = node.parentElement; }
+
+	const childDivCount = el.querySelectorAll(":scope > div").length;
+
+	return textLen * 0.5
+		+ pCount * 30
+		+ imgCount * 20
+		+ hCount * 15
+		+ density * 2000
+		+ hintBonus * 500
+		- childDivCount * 5
+		- depth * 2;
+}
+
+function getTextDensity(el: Element): number {
+	const text = (el.textContent || "").trim().length;
+	const html = el.innerHTML.length;
+	if (html === 0) return 0;
+	return text / html;
+}
+
 function collectImageUrls(article: Element, baseUrl: string): string[] {
 	const urls: string[] = [];
 	const seen = new Set<string>();
@@ -142,61 +219,65 @@ chrome.runtime.onMessage.addListener((request: any, _sender, sendResponse) => {
 					selectedHtml = div.innerHTML;
 				}
 
-				const defuddle = new Defuddle(document, { url: document.URL });
-				const parseTimeout = new Promise<never>((_, reject) =>
-					setTimeout(() => reject(new Error("parseAsync timeout")), 8000)
-				);
-				const defuddled = await Promise.race([defuddle.parseAsync(), parseTimeout]).catch(
-					() => defuddle.parse()
-				);
-
 				const parser = new DOMParser();
 				const doc = parser.parseFromString(
 					document.documentElement.outerHTML,
 					"text/html"
 				);
 				doc.querySelectorAll("script, style").forEach((el) => el.remove());
-				doc.querySelectorAll("*").forEach((el) => el.removeAttribute("style"));
 				resolveRelativeUrls(doc);
 
-				const article =
-					doc.querySelector("article") ??
-					doc.querySelector('[role="main"]') ??
-					doc.querySelector("main") ??
-					doc.body;
-				const cleanedHtml = article.innerHTML;
-				const imageUrls = collectImageUrls(article, document.URL);
+				const articleElement = findArticle(doc);
+				const imageUrls = collectImageUrls(articleElement, document.URL);
+				const articleHtml = articleElement.innerHTML;
 
-				let content = defuddled.content;
+				let content: string;
 				if (selectedHtml) {
 					content = selectedHtml;
+				} else {
+					content = articleHtml;
 				}
 
+				console.log("[AuthClip:content] article element:", articleElement.tagName, articleElement.className, "content length:", content.length);
+
 				const hlHighlights = highlighter.getHighlights();
-				const markdown = createMarkdownContent(content, document.URL);
+				let markdown = htmlToMarkdown(content, document.URL);
+				console.log("[AuthClip:content] htmlToMarkdown result length:", markdown.length);
+				console.log("[AuthClip:content] markdown preview:", markdown.substring(0, 500));
+
+				markdown = cleanMarkdownNoise(markdown);
+				console.log("[AuthClip:content] final markdown length:", markdown.length);
+
+				const defuddle = new Defuddle(document, { url: document.URL });
+				const parseTimeout = new Promise<never>((_, reject) =>
+					setTimeout(() => reject(new Error("parseAsync timeout")), 5000)
+				);
+				const defuddled = await Promise.race([defuddle.parseAsync(), parseTimeout]).catch(
+					() => null
+				);
 
 				const response = {
-					title: (defuddled as any).title || document.title || "Untitled",
+					title: (defuddled as any)?.title || document.title || "Untitled",
 					url: document.URL,
 					markdown,
-					fullHtml: cleanedHtml,
+					fullHtml: articleHtml,
 					selectedHtml,
 					imageUrls,
 					highlights: hlHighlights,
 					meta: {
-						author: (defuddled as any).author || "",
-						description: (defuddled as any).description || "",
-						published: (defuddled as any).published || "",
-						siteName: (defuddled as any).site || "",
+						author: (defuddled as any)?.author || "",
+						description: (defuddled as any)?.description || "",
+						published: (defuddled as any)?.published || "",
+						siteName: (defuddled as any)?.site || "",
 						domain: new URL(document.URL).hostname,
-						favicon: (defuddled as any).favicon || "",
-						image: (defuddled as any).image || "",
-						language: (defuddled as any).language || "",
-						wordCount: (defuddled as any).wordCount || 0,
+						favicon: (defuddled as any)?.favicon || "",
+						image: (defuddled as any)?.image || "",
+						language: (defuddled as any)?.language || "",
+						wordCount: (defuddled as any)?.wordCount || 0,
 					},
-					schemaOrgData: (defuddled as any).schemaOrgData || null,
+					schemaOrgData: (defuddled as any)?.schemaOrgData || null,
 					metaTags:
-						(defuddled as any).metaTags?.map(
+						(defuddled as any)?.metaTags?.map(
 							(t: { name?: string | null; property?: string | null; content: string | null }) => ({
 								name: t.name || null,
 								property: t.property || null,
@@ -319,3 +400,28 @@ chrome.runtime.onMessage.addListener((request: any, _sender, sendResponse) => {
 
 	return false;
 });
+
+function cleanMarkdownNoise(md: string): string {
+	return md
+		.replace(/<(svg|path|defs|linearGradient|stop|g|rect|circle|line|polygon|polyline|text|tspan)[^>]*>[\s\S]*?<\/\1>/gi, "")
+		.replace(/<button[^>]*>[\s\S]*?<\/button>/gi, "")
+		.replace(/<(app-|mat-)[a-z-]+[^>]*>[\s\S]*?<\/(app-|mat-)[a-z-]+>/gi, "")
+		.replace(/<(svg|path|defs|linearGradient|stop|g|rect|circle|line|polygon|polyline|text|tspan|button)\b[^>]*\/>/gi, "")
+		.replace(/<svg[^>]*>[\s\S]*?<\/svg>/gi, "")
+		.replace(/<button[^>]*>[\s\S]*?<\/button>/gi, "")
+		.replace(/<span[^>]*>\s*<\/span>/gi, "")
+		.replace(/&nbsp;/g, " ")
+		.replace(/&(amp|lt|gt|quot);/g, (m) => ({ "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"' })[m] || m)
+		.replace(/\n{3,}/g, "\n\n")
+		.trim();
+}
+
+function getTextFallback(html: string): string {
+	const parser = new DOMParser();
+	const doc = parser.parseFromString(html, "text/html");
+	const body = doc.body;
+	if (!body) return html;
+	let text = body.textContent || "";
+	text = text.replace(/\n{3,}/g, "\n\n").trim();
+	return text;
+}

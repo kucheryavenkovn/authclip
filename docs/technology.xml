@@ -1,0 +1,57 @@
+<TechnologyStack VERSION="0.2.0">
+  <Runtime>Node.js >=20.0.0</Runtime>
+  <Language>TypeScript 5.6+ (ES2022 target, ESNext modules, bundler moduleResolution)</Language>
+  <Framework>Obsidian Plugin API (latest) + Chrome Extension APIs (MV3)</Framework>
+
+  <Dependencies>
+    <dep name="zod" version="^3.23.0" purpose="Runtime schema validation for CapturePackage, ResultReport, and settings models" />
+    <dep name="dayjs" version="^1.11.13" purpose="Date formatting in templates and frontmatter" />
+    <dep name="defuddle" version="^0.16.0" purpose="Article content extraction from web pages" />
+    <dep name="dompurify" version="^3.4.0" purpose="HTML sanitization before markdown conversion" />
+    <dep name="esbuild" version="^0.28.0" purpose="Bundling for Obsidian plugin and clipper extension" />
+    <dep name="webpack" version="^5.106.1" purpose="Browser extension production build" />
+    <dep name="vitest" version="^3.0.0" purpose="Test runner for all packages" />
+  </Dependencies>
+
+  <VersionConstraints>
+    <constraint lib="typescript" min="5.6.0" max="5.x" reason="Project uses ES2022 target and bundler moduleResolution" />
+    <constraint lib="vitest" min="3.0.0" max="3.x" reason="All packages standardized on Vitest 3" />
+    <constraint lib="zod" min="3.23.0" max="3.x" reason="Shared validation schemas depend on Zod 3 API surface" />
+  </VersionConstraints>
+
+  <Tooling>
+    <tool name="workspace" value="pnpm workspaces" version="9.x" />
+    <tool name="bundler-plugin" value="esbuild" version="0.28.x" />
+    <tool name="bundler-extension" value="webpack" version="5.x" />
+    <tool name="linter" value="tsc --noEmit" version="5.6.x" />
+    <tool name="formatter" value="none" />
+    <tool name="test-runner" value="vitest" version="3.x" />
+  </Tooling>
+
+  <Testing>
+    <module-level>
+      <command>pnpm --filter &lt;package&gt; test</command>
+      <focus>Fast deterministic unit and contract checks per package</focus>
+    </module-level>
+    <wave-level>
+      <command>pnpm -r --stream test</command>
+      <focus>Cross-package integration surfaces touched by current wave</focus>
+    </wave-level>
+    <phase-level>
+      <command>pnpm test</command>
+      <focus>Full monorepo regression across all packages</focus>
+    </phase-level>
+    <mocking-policy>Prefer fakes and narrow stubs over broad monkey-patching. Use jsdom for DOM-related clipper tests. Mock Obsidian API minimally in plugin tests.</mocking-policy>
+  </Testing>
+
+  <Observability>
+    <logger>console-based structured logging (no dedicated library)</logger>
+    <log-format>[Module][function][BLOCK_NAME] message</log-format>
+    <required-fields>correlationId, phase, assetCount, resultStatus</required-fields>
+    <redaction>Never log secrets, credentials, cookies, auth headers, session tokens, or raw high-risk payloads. Redact query strings in diagnostic URLs.</redaction>
+  </Observability>
+
+  <DeliveryShape>
+    <shape>Local-only monorepo. Browser extension distributed as Chrome/Edge MV3 extension. Obsidian plugin distributed as manual-install .zip. No cloud backend, no server-side components.</shape>
+  </DeliveryShape>
+</TechnologyStack>

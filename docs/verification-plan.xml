@@ -1,0 +1,273 @@
+<VerificationPlan VERSION="0.3.0">
+  <GlobalPolicy>
+    <log-format>[Module][function][BLOCK_NAME] message</log-format>
+    <deterministic-first>true</deterministic-first>
+    <module-level-focus>Fast deterministic checks close to the module using vitest run</module-level-focus>
+    <wave-level-focus>Cross-package integration surfaces touched by the current wave</wave-level-focus>
+    <phase-level-focus>Full monorepo regression via pnpm test</phase-level-focus>
+    <redaction>Never log secrets, credentials, cookies, auth headers, session tokens, or raw high-risk payloads. Redact query strings in URLs.</redaction>
+  </GlobalPolicy>
+
+  <CriticalFlows>
+    <VF-001 NAME="FullClipHappyPath" USE_CASES="UC-001" DATA_FLOW="DF-CLIP_FULL" PRIORITY="high">
+      <scenario>User clips an authenticated page with 5 images; all images download and save locally; markdown links rewritten to wikilinks.</scenario>
+      <expected-outcome>Note created in vault with 5 local attachments and correct wikilink references; frontmatter with source meta and assets_saved=5.</expected-outcome>
+      <required-signals>
+        <log-marker>[ClipperFork][discoverAssets][BLOCK_DISCOVER_ASSETS]</log-marker>
+        <log-marker>[ClipperFork][fetchAssets][BLOCK_FETCH_ASSET]</log-marker>
+        <log-marker>[ClipperFork][buildCapturePackage][BLOCK_BUILD_PACKAGE]</log-marker>
+        <log-marker>[ClipperFork][sendCapturePackage][BLOCK_TRANSPORT]</log-marker>
+        <log-marker>[ObsidianPlugin][executeClipTransaction][BLOCK_RECEIVE]</log-marker>
+        <log-marker>[ObsidianPlugin][writeAttachment][BLOCK_WRITE_FILE]</log-marker>
+        <log-marker>[ObsidianPlugin][rewriteMarkdown][BLOCK_REWRITE_LINKS]</log-marker>
+        <log-marker>[ObsidianPlugin][executeClipTransaction][BLOCK_CREATE_NOTE]</log-marker>
+        <trace-sequence>BLOCK_DISCOVER_ASSETS -> BLOCK_FETCH_ASSET -> BLOCK_BUILD_PACKAGE -> BLOCK_TRANSPORT -> BLOCK_RECEIVE -> BLOCK_WRITE_FILE -> BLOCK_REWRITE_LINKS -> BLOCK_CREATE_NOTE -> RETURNED</trace-sequence>
+      </required-signals>
+    </VF-001>
+
+    <VF-002 NAME="PartialSuccess" USE_CASES="UC-003" DATA_FLOW="DF-CLIP_PARTIAL" PRIORITY="high">
+      <scenario>2 of 5 images fail to download; note still saves with 3 local attachments and failure report.</scenario>
+      <expected-outcome>Note saved; frontmatter shows assets_saved=3, assets_failed=2; failed assets marked with HTML comment in markdown.</expected-outcome>
+      <required-signals>
+        <log-marker>[ClipperFork][fetchAssets][BLOCK_FETCH_ASSET] FETCH_FAILED</log-marker>
+        <trace-sequence>BLOCK_FETCH_ASSET -> (2x FETCH_FAILED) -> BLOCK_BUILD_PACKAGE -> BLOCK_RECEIVE -> BLOCK_WRITE_FILE -> BLOCK_REWRITE_LINKS -> BLOCK_CREATE_NOTE -> RETURNED</trace-sequence>
+      </required-signals>
+    </VF-002>
+
+    <VF-003 NAME="NameConflictResolution" USE_CASES="UC-005" DATA_FLOW="DF-DEDUP" PRIORITY="medium">
+      <scenario>Clip a page where attachment filename conflicts with existing vault file.</scenario>
+      <expected-outcome>generateSafeName appends counter suffix; no overwrite; note links to new name.</expected-outcome>
+      <required-signals>
+        <log-marker>[ObsidianPlugin][resolveAttachmentPath][BLOCK_RESOLVE_PATH]</log-marker>
+      </required-signals>
+    </VF-003>
+
+    <VF-004 NAME="PluginUnavailable" USE_CASES="UC-006" DATA_FLOW="DF-PLUGIN_UNAVAILABLE" PRIORITY="high">
+      <scenario>Extension attempts to send package but Obsidian plugin is not running.</scenario>
+      <expected-outcome>TransportError with code PLUGIN_UNAVAILABLE; clear error shown to user.</expected-outcome>
+      <required-signals>
+        <log-marker>[ClipperFork][sendCapturePackage][BLOCK_TRANSPORT] PLUGIN_UNAVAILABLE</log-marker>
+      </required-signals>
+    </VF-004>
+
+    <VF-005 NAME="TokenRedaction" USE_CASES="UC-001" DATA_FLOW="DF-CLIP_FULL" PRIORITY="high">
+      <scenario>Clip a page with sensitive query params and auth cookies.</scenario>
+      <expected-outcome>No tokens, cookies, or auth headers appear in any log output or frontmatter.</expected-outcome>
+      <required-signals>
+        <assertion>All log outputs pass redaction check — no auth headers, cookies, or tokens.</assertion>
+      </required-signals>
+    </VF-005>
+
+    <VF-006 NAME="AuthTokenRejection" USE_CASES="UC-007" DATA_FLOW="DF-CLIP_FULL" PRIORITY="medium">
+      <scenario>Plugin has auth token configured; request arrives without valid token.</scenario>
+      <expected-outcome>HTTP 401 with MANIFEST_INVALID error; no vault writes.</expected-outcome>
+      <required-signals>
+        <log-marker>[ObsidianPlugin][handleCapture][BLOCK_AUTH_CHECK]</log-marker>
+      </required-signals>
+    </VF-006>
+
+    <VF-007 NAME="ManifestValidation" USE_CASES="UC-001" DATA_FLOW="DF-CLIP_FULL" PRIORITY="high">
+      <scenario>Invalid CapturePackage sent to plugin (missing fields, wrong version).</scenario>
+      <expected-outcome>Rejected with MANIFEST_INVALID or MANIFEST_VERSION_MISMATCH; no vault writes.</expected-outcome>
+      <required-signals>
+        <log-marker>[ObsidianPlugin][validateCapturePackage][BLOCK_VALIDATE]</log-marker>
+        <assertion>MANIFEST_INVALID must not trigger any vault writes.</assertion>
+      </required-signals>
+    </VF-007>
+  </CriticalFlows>
+
+  <ModuleVerification>
+    <V-M-SHARED-TYPES MODULE="M-SHARED-TYPES" PRIORITY="high">
+      <test-files>
+        <file>packages/shared-types/src/__tests__/</file>
+      </test-files>
+      <module-checks>
+        <check-1>pnpm --filter @authclip/shared-types test</check-1>
+        <check-2>pnpm --filter @authclip/shared-types typecheck</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success">Valid CapturePackage passes CapturePackageSchema.safeParse.</scenario-1>
+        <scenario-2 kind="failure">Invalid CapturePackage rejected with descriptive Zod error.</scenario-2>
+        <scenario-3 kind="success">ResultReport serialization round-trips correctly.</scenario-3>
+        <scenario-4 kind="success">sanitizeFilename removes unsafe characters, handles edge cases.</scenario-4>
+        <scenario-5 kind="success">generateSafeName appends counter on conflict.</scenario-5>
+        <scenario-6 kind="success">extractFilenameFromUrl handles data:, blob:, query strings, encoded paths.</scenario-6>
+        <scenario-7 kind="success">buildResultStatus returns correct status for all combinations.</scenario-7>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[SharedTypes][validateCapturePackage][BLOCK_VALIDATE]</marker-1>
+      </required-log-markers>
+      <required-trace-assertions>
+        <assertion-1>Validation failure must not emit downstream processing blocks.</assertion-1>
+      </required-trace-assertions>
+      <wave-follow-up>Integration check against clipper-fork and obsidian-plugin consuming shared types.</wave-follow-up>
+      <phase-follow-up>Full regression suite across all packages.</phase-follow-up>
+    </V-M-SHARED-TYPES>
+
+    <V-M-TEMPLATE-ENGINE MODULE="M-TEMPLATE-ENGINE" PRIORITY="medium">
+      <test-files>
+        <file>packages/template-engine/src/filters/*.test.ts (co-located)</file>
+      </test-files>
+      <module-checks>
+        <check-1>pnpm --filter @authclip/template-engine test</check-1>
+        <check-2>pnpm --filter @authclip/template-engine typecheck</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success">Template with variables and filters renders correctly.</scenario-1>
+        <scenario-2 kind="failure">Invalid template syntax produces parse error with line/column.</scenario-2>
+        <scenario-3 kind="success">All 50+ filters produce expected output.</scenario-3>
+        <scenario-4 kind="success">validateVariables detects unknown variables and suggests corrections.</scenario-4>
+        <scenario-5 kind="success">validateFilters detects unknown filters and suggests corrections.</scenario-5>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[TemplateEngine][render][BLOCK_RENDER]</marker-1>
+      </required-log-markers>
+      <wave-follow-up>Check template rendering in clipper-fork note generation.</wave-follow-up>
+      <phase-follow-up>Full regression suite.</phase-follow-up>
+    </V-M-TEMPLATE-ENGINE>
+
+    <V-M-CLIPPER-FORK MODULE="M-CLIPPER-FORK" PRIORITY="high">
+      <test-files>
+        <file>apps/clipper-fork/src/__tests__/</file>
+      </test-files>
+      <module-checks>
+        <check-1>pnpm --filter @authclip/clipper-fork test</check-1>
+        <check-2>pnpm --filter @authclip/clipper-fork typecheck</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success">discoverAssets finds img[src], img[srcset], picture source[srcset] elements.</scenario-1>
+        <scenario-2 kind="success">parseSrcset handles descriptors, multiple URLs, empty input.</scenario-2>
+        <scenario-3 kind="success">fetchAssets downloads image data as base64 with credentials: include.</scenario-3>
+        <scenario-4 kind="failure">fetchAssets on 403 returns FETCH_FORBIDDEN per asset.</scenario-4>
+        <scenario-5 kind="failure">fetchAssets timeout returns FETCH_TIMEOUT.</scenario-5>
+        <scenario-6 kind="success">buildCapturePackage produces valid CapturePackage with correct linkMap.</scenario-6>
+        <scenario-7 kind="failure">Payload exceeding maxBytes returns PAYLOAD_TOO_LARGE.</scenario-7>
+        <scenario-8 kind="success">sendCapturePackage POSTs to correct URL with optional auth header.</scenario-8>
+        <scenario-9 kind="failure">sendCapturePackage to offline server throws TransportError(PLUGIN_UNAVAILABLE).</scenario-9>
+        <scenario-10 kind="success">checkHealth returns true for running server, false otherwise.</scenario-10>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[ClipperFork][discoverAssets][BLOCK_DISCOVER_ASSETS]</marker-1>
+        <marker-2>[ClipperFork][fetchAssets][BLOCK_FETCH_ASSET]</marker-2>
+        <marker-3>[ClipperFork][buildCapturePackage][BLOCK_BUILD_PACKAGE]</marker-3>
+        <marker-4>[ClipperFork][sendCapturePackage][BLOCK_TRANSPORT]</marker-4>
+      </required-log-markers>
+      <required-trace-assertions>
+        <assertion-1>Failed fetch must not prevent remaining assets from being fetched.</assertion-1>
+        <assertion-2>No auth headers or cookies in any log output.</assertion-2>
+      </required-trace-assertions>
+      <wave-follow-up>Integration test with Obsidian plugin receiver.</wave-follow-up>
+      <phase-follow-up>End-to-end test with live browser extension.</phase-follow-up>
+    </V-M-CLIPPER-FORK>
+
+    <V-M-OBSIDIAN-PLUGIN MODULE="M-OBSIDIAN-PLUGIN" PRIORITY="high">
+      <test-files>
+        <file>apps/obsidian-plugin/src/__tests__/</file>
+      </test-files>
+      <module-checks>
+        <check-1>pnpm --filter @authclip/obsidian-plugin test</check-1>
+        <check-2>pnpm --filter @authclip/obsidian-plugin typecheck</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success">validateCapturePackage accepts valid CapturePackage v1.0.</scenario-1>
+        <scenario-2 kind="failure">validateCapturePackage rejects invalid JSON with MANIFEST_INVALID.</scenario-2>
+        <scenario-3 kind="failure">validateCapturePackage rejects wrong major version with MANIFEST_VERSION_MISMATCH.</scenario-3>
+        <scenario-4 kind="success">writeAttachment decodes base64 and writes binary to vault path.</scenario-4>
+        <scenario-5 kind="failure">writeAttachment returns WRITE_FAILED on vault error.</scenario-5>
+        <scenario-6 kind="success">rewriteMarkdown converts markdown image URLs to wikilinks.</scenario-6>
+        <scenario-7 kind="success">rewriteMarkdown converts to relative paths when configured.</scenario-7>
+        <scenario-8 kind="success">rewriteMarkdown handles HTML img tags.</scenario-8>
+        <scenario-9 kind="success">resolveAttachmentDir works for same-as-note, subfolder, and global strategies.</scenario-9>
+        <scenario-10 kind="success">resolveNotePath uses defaultNoteFolder and filename from pathHint.</scenario-10>
+        <scenario-11 kind="success">resolveAttachmentPath generates unique names on conflict.</scenario-11>
+        <scenario-12 kind="success">prependFrontmatter includes all meta fields and asset counts.</scenario-12>
+        <scenario-13 kind="success">executeClipTransaction produces correct ResultReport on happy path.</scenario-13>
+        <scenario-14 kind="success">executeClipTransaction handles partial failures (note still saved).</scenario-14>
+        <scenario-15 kind="failure">HTTP server rejects invalid auth token with 401.</scenario-15>
+        <scenario-16 kind="success">HTTP server health endpoint returns 200.</scenario-16>
+        <scenario-17 kind="failure">sanitizeFilename prevents path traversal patterns.</scenario-17>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[ObsidianPlugin][validateCapturePackage][BLOCK_VALIDATE]</marker-1>
+        <marker-2>[ObsidianPlugin][writeAttachment][BLOCK_WRITE_FILE]</marker-2>
+        <marker-3>[ObsidianPlugin][rewriteMarkdown][BLOCK_REWRITE_LINKS]</marker-3>
+        <marker-4>[ObsidianPlugin][executeClipTransaction][BLOCK_RECEIVE]</marker-4>
+        <marker-5>[ObsidianPlugin][executeClipTransaction][BLOCK_CREATE_NOTE]</marker-5>
+      </required-log-markers>
+      <required-trace-assertions>
+        <assertion-1>MANIFEST_INVALID must not trigger any vault writes.</assertion-1>
+        <assertion-2>Partial write failure must still produce a note with failure metadata.</assertion-2>
+        <assertion-3>No secrets in log output.</assertion-3>
+        <assertion-4>Auth token rejection must not trigger vault writes.</assertion-4>
+      </required-trace-assertions>
+      <wave-follow-up>Integration test with clipper-fork transport.</wave-follow-up>
+      <phase-follow-up>End-to-end test with live Obsidian instance.</phase-follow-up>
+    </V-M-OBSIDIAN-PLUGIN>
+  </ModuleVerification>
+
+  <PhaseGates>
+    <Gate-Phase-1 PHASE="Phase-1">
+      <goal>Shared types, schemas, and template engine validated.</goal>
+      <commands>
+        <command-1>pnpm --filter @authclip/shared-types test</command-1>
+        <command-2>pnpm --filter @authclip/template-engine test</command-2>
+        <command-3>pnpm --filter @authclip/shared-types typecheck</command-3>
+        <command-4>pnpm --filter @authclip/template-engine typecheck</command-4>
+      </commands>
+      <required-evidence>
+        <evidence-1>CapturePackage schema validates good/bad payloads.</evidence-1>
+        <evidence-2>Template engine renders all standard filters.</evidence-2>
+      </required-evidence>
+    </Gate-Phase-1>
+
+    <Gate-Phase-2 PHASE="Phase-2">
+      <goal>Browser extension discovers, fetches, and packages assets correctly.</goal>
+      <commands>
+        <command-1>pnpm --filter @authclip/clipper-fork test</command-1>
+        <command-2>pnpm --filter @authclip/clipper-fork typecheck</command-2>
+      </commands>
+      <required-evidence>
+        <evidence-1>Discovery finds all img/src/srcset elements in test DOM.</evidence-1>
+        <evidence-2>Fetch produces valid base64 payload.</evidence-2>
+        <evidence-3>CapturePackage passes shared-types validation.</evidence-3>
+        <evidence-4>Transport sends and receives with auth token.</evidence-4>
+      </required-evidence>
+    </Gate-Phase-2>
+
+    <Gate-Phase-3 PHASE="Phase-3">
+      <goal>Plugin receives, validates, writes, rewrites, and creates notes end-to-end.</goal>
+      <commands>
+        <command-1>pnpm --filter @authclip/obsidian-plugin test</command-1>
+        <command-2>pnpm --filter @authclip/obsidian-plugin typecheck</command-2>
+      </commands>
+      <required-evidence>
+        <evidence-1>Valid package produces note with correct local links.</evidence-1>
+        <evidence-2>Invalid manifest rejected before any vault write.</evidence-2>
+        <evidence-3>Partial failure still produces a note.</evidence-3>
+        <evidence-4>Auth token rejection returns 401 without vault writes.</evidence-4>
+        <evidence-5>Frontmatter contains source meta and asset counts.</evidence-5>
+      </required-evidence>
+    </Gate-Phase-3>
+
+    <Gate-Phase-4 PHASE="Phase-4">
+      <goal>Full integration with hash dedup, CSS bg images, security hardening.</goal>
+      <commands>
+        <command-1>pnpm test</command-1>
+        <command-2>pnpm lint</command-2>
+      </commands>
+      <required-evidence>
+        <evidence-1>SHA-256 dedup prevents duplicate file creation.</evidence-1>
+        <evidence-2>Token redaction passes security audit check.</evidence-2>
+        <evidence-3>Path traversal filenames rejected.</evidence-3>
+        <evidence-4>CSS background-image URLs discovered when enabled.</evidence-4>
+        <evidence-5>All module-level and phase-level checks green.</evidence-5>
+      </required-evidence>
+    </Gate-Phase-4>
+  </PhaseGates>
+
+  <FailurePackets>
+    <packet-template>
+      <expected-fields>scenario, expected-evidence, observed-evidence, first-divergent-block, next-action</expected-fields>
+    </packet-template>
+  </FailurePackets>
+</VerificationPlan>

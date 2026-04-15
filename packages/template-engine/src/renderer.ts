@@ -1,3 +1,26 @@
+// FILE: packages/template-engine/src/renderer.ts
+// VERSION: 0.2.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Evaluate AST and produce string output with variable interpolation, conditionals, loops, and filters
+//   SCOPE: Async rendering of AST nodes, expression evaluation, variable resolution, selector/prompt deferred processing
+//   DEPENDS: parser.ts, filters.ts
+//   LINKS: M-TEMPLATE-ENGINE
+//   ROLE: RUNTIME
+//   MAP_MODE: EXPORTS
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   AsyncResolver - Async variable resolver function type
+//   RenderContext - Context: variables, currentUrl, tabId, asyncResolver, custom filters
+//   RenderOptions - Optional render settings (trimOutput)
+//   RenderResult - Output string, errors, hasDeferredVariables flag
+//   RenderError - Error with message and optional position
+//   render - Render template string with async context
+//   renderAST - Render pre-parsed AST with async context
+//   renderTemplate - Simplified render: template + variables + currentUrl
+//   createSelectorResolver - Create async resolver for CSS selector variables
+// END_MODULE_MAP
+
 // Template renderer for the Web Clipper template engine
 // Evaluates an AST and produces string output
 //

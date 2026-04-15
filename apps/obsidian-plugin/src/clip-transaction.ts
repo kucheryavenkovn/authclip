@@ -1,3 +1,12 @@
+// START_MODULE_MAP
+//   ClipTransactionInput - Transaction input: pkg, settings, vault
+//   executeClipTransaction - Full clip orchestration producing ResultReport
+// END_MODULE_MAP
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: v0.2.0 - Initial GRACE markup added to existing implementation
+// END_CHANGE_SUMMARY
+
 import type {
   CapturePackage,
   AttachmentStatus,
@@ -20,9 +29,17 @@ export interface ClipTransactionInput {
   vault: VaultAdapter;
 }
 
+// START_CONTRACT: executeClipTransaction
+//   PURPOSE: Orchestrate full clip: resolve paths, write attachments, rewrite markdown, create note
+//   INPUTS: { input: ClipTransactionInput - pkg, settings, vault }
+//   OUTPUTS: { ResultReport - version, status, notePath, attachments, errors }
+//   SIDE_EFFECTS: Creates directories, writes binary files and note to vault
+//   LINKS: M-SHARED-TYPES, M-OBSIDIAN-PLUGIN
+// END_CONTRACT: executeClipTransaction
 export async function executeClipTransaction(
   input: ClipTransactionInput
 ): Promise<ResultReport> {
+  // START_BLOCK_RECEIVE
   const { pkg, settings, vault } = input;
   const errors: ResultReport["errors"] = [];
 
@@ -77,6 +94,9 @@ export async function executeClipTransaction(
 
   const finalMarkdown = prependFrontmatter(rewritten, pkg, attachmentResults, settings);
 
+  // END_BLOCK_RECEIVE
+
+  // START_BLOCK_CREATE_NOTE
   let noteSaved = false;
   try {
     await vault.ensureDir(dirName(notePath));
@@ -99,6 +119,7 @@ export async function executeClipTransaction(
     attachments: allAttachments,
     errors,
   };
+  // END_BLOCK_CREATE_NOTE
 }
 
 async function listExistingFiles(vault: VaultAdapter, dir: string): Promise<string[]> {

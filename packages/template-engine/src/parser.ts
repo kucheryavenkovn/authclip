@@ -1,3 +1,26 @@
+// FILE: packages/template-engine/src/parser.ts
+// VERSION: 0.2.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Convert token stream into Abstract Syntax Tree (AST) for template rendering
+//   SCOPE: Parsing of text, variables, if/elseif/else/endif, for/endfor, set, expressions, filters
+//   DEPENDS: tokenizer.ts, filters.ts
+//   LINKS: M-TEMPLATE-ENGINE
+//   ROLE: RUNTIME
+//   MAP_MODE: EXPORTS
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   BaseNode, TextNode, VariableNode, IfNode, ForNode, SetNode - AST node types
+//   LiteralExpression, IdentifierExpression, BinaryExpression, UnaryExpression, FilterExpression, MemberExpression, GroupExpression - Expression types
+//   ASTNode, Expression - Union types
+//   ParserError, ParserResult - Error and result types
+//   parse - Parse template string into AST
+//   parseTokens - Parse pre-tokenized token array into AST
+//   formatAST - Format AST for debugging
+//   validateVariables - Validate variable references, suggest corrections
+//   validateFilters - Validate filter names and params
+// END_MODULE_MAP
+
 // Template parser for the Web Clipper template engine
 // Converts token stream into an Abstract Syntax Tree (AST)
 //

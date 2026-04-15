@@ -1,3 +1,19 @@
+// FILE: packages/shared-types/src/settings.ts
+// VERSION: 0.2.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Define plugin and extension configuration model with defaults
+//   SCOPE: ClipSettings interface and DEFAULT_SETTINGS constant
+//   DEPENDS: capture-package.ts (RewriteMode)
+//   LINKS: M-SHARED-TYPES
+//   ROLE: RUNTIME
+//   MAP_MODE: EXPORTS
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   ClipSettings - Full configuration model
+//   DEFAULT_SETTINGS - Frozen default settings object
+// END_MODULE_MAP
+
 import type { RewriteMode } from "./capture-package";
 
 export interface ClipSettings {

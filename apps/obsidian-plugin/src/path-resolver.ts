@@ -1,3 +1,21 @@
+// FILE: apps/obsidian-plugin/src/path-resolver.ts
+// VERSION: 0.2.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Resolve note paths, attachment directories, and unique attachment file paths
+//   SCOPE: Path resolution for all three attachment strategies, unique name generation, POSIX path joining
+//   DEPENDS: M-SHARED-TYPES (ClipSettings, generateSafeName)
+//   LINKS: M-OBSIDIAN-PLUGIN
+//   ROLE: RUNTIME
+//   MAP_MODE: EXPORTS
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   resolveNotePath - Compute note path from pathHint and defaultNoteFolder
+//   resolveAttachmentDir - Compute attachment dir from strategy
+//   resolveAttachmentPath - Compute unique attachment file path
+//   joinPosix - Join path segments with forward slashes
+// END_MODULE_MAP
+
 import type { ClipSettings } from "@authclip/shared-types";
 import { generateSafeName } from "@authclip/shared-types";
 

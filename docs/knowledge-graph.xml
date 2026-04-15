@@ -1,0 +1,120 @@
+<KnowledgeGraph>
+  <Project NAME="AuthClip" VERSION="0.3.0">
+    <keywords>obsidian, web-clipper, browser-extension, asset-discovery, markdown-rewrite, local-first, attachment-writer</keywords>
+    <annotation>Auth-aware Obsidian Web Clipper fork + companion plugin that saves images/attachments from authenticated pages as local vault files</annotation>
+
+    <M-SHARED-TYPES NAME="shared-types" TYPE="UTILITY" STATUS="implemented">
+      <purpose>Shared TypeScript types, Zod validation schemas, sanitization utilities, and constants for the AuthClip monorepo</purpose>
+      <path>packages/shared-types/src/index.ts</path>
+      <depends>none</depends>
+      <verification-ref>V-M-SHARED-TYPES</verification-ref>
+      <annotations>
+        <type-ClipErrorCode PURPOSE="Union of all clip error codes (DISCOVERY_FAILED, FETCH_FAILED, etc.)" />
+        <type-AssetSource PURPOSE="Asset origin discriminator: img-src, img-srcset, picture-srcset, css-bg" />
+        <type-DiscoveredAsset PURPOSE="Single discovered image asset with id, url, source, selected flag" />
+        <type-AttachmentPayload PURPOSE="Binary attachment with id, originalUrl, mimeType, suggestedName, dataBase64, optional sha256" />
+        <type-AttachmentResultStatus PURPOSE="Attachment outcome: saved | deduplicated | failed | skipped" />
+        <type-AttachmentStatus PURPOSE="Discriminated union of per-attachment status variants" />
+        <type-LinkMapEntry PURPOSE="Maps original URL to attachment id for markdown rewriting" />
+        <type-RewriteMode PURPOSE="Link format: wikilink | relative-markdown" />
+        <type-CaptureSource PURPOSE="Page origin: url, title, capturedAt" />
+        <type-CaptureNote PURPOSE="Note content: pathHint, markdown" />
+        <type-CaptureOptions PURPOSE="Per-capture settings: rewriteMode, deduplicate, attachmentSubfolder, maxAttachmentBytes" />
+        <type-CapturePackage PURPOSE="Canonical manifest for clip + attachments + linkMap + options + optional meta" />
+        <type-CaptureMeta PURPOSE="Optional page metadata: author, description, published, siteName, domain, favicon, image, language, wordCount" />
+        <type-ClipResultStatus PURPOSE="Overall clip outcome: success | partial | failed" />
+        <type-ResultReportError PURPOSE="Error entry with code and message" />
+        <type-ResultReport PURPOSE="Plugin-to-extension status report: version, status, notePath, attachments, errors" />
+        <type-ClipSettings PURPOSE="Plugin and extension configuration model with defaults" />
+        <fn-sanitizeFilename PURPOSE="Remove unsafe characters from filenames" />
+        <fn-generateSafeName PURPOSE="Generate unique filename with conflict resolution counter" />
+        <fn-extractFilenameFromUrl PURPOSE="Extract filename from URL pathname, handling data:/blob: protocols" />
+        <fn-buildResultStatus PURPOSE="Derive ClipResultStatus from attachment statuses and noteSaved flag" />
+        <fn-validateCapturePackage PURPOSE="Zod-based runtime validation (schemas re-exported from schemas.ts)" />
+      </annotations>
+    </M-SHARED-TYPES>
+
+    <M-TEMPLATE-ENGINE NAME="template-engine" TYPE="CORE_LOGIC" STATUS="implemented">
+      <purpose>Tokenizer, parser, and renderer for note naming and content templates with 50+ filters, variable resolvers, and schema.org support</purpose>
+      <path>packages/template-engine/src/index.ts</path>
+      <depends>M-SHARED-TYPES</depends>
+      <verification-ref>V-M-TEMPLATE-ENGINE</verification-ref>
+      <annotations>
+        <fn-tokenize PURPOSE="Convert template string into token stream" />
+        <fn-parse PURPOSE="Parse template string into AST" />
+        <fn-parseTokens PURPOSE="Parse pre-tokenized token array into AST" />
+        <fn-render PURPOSE="Render template string with async context" />
+        <fn-renderAST PURPOSE="Render pre-parsed AST with async context" />
+        <fn-renderTemplate PURPOSE="Simplified sync-like render: template + variables + currentUrl" />
+        <fn-applyFilterDirect PURPOSE="Apply a named filter with params to a value" />
+        <fn-applyFilters PURPOSE="Apply a pipeline of filters" />
+        <fn-buildVariables PURPOSE="Build template variable map from page data" />
+        <fn-resolveVariable PURPOSE="Resolve a variable name from context" />
+        <fn-resolveVariableAsync PURPOSE="Async variable resolution (selectors, prompts)" />
+        <fn-validateVariables PURPOSE="Validate variable references in AST, suggest corrections" />
+        <fn-validateFilters PURPOSE="Validate filter names and params in AST" />
+        <fn-createSelectorResolver PURPOSE="Create async resolver for CSS selector variables" />
+        <type-Template PURPOSE="Template definition: id, name, behavior, noteNameFormat, path, noteContentFormat, properties" />
+        <type-RenderContext PURPOSE="Render context: variables, currentUrl, tabId, asyncResolver, custom filters" />
+        <type-RenderResult PURPOSE="Render output: string, errors, hasDeferredVariables" />
+        <type-Token PURPOSE="Token with type, value, line, column, trim flags" />
+        <type-ASTNode PURPOSE="AST node: text | variable | if | for | set" />
+        <type-Expression PURPOSE="Expression node: literal | identifier | binary | unary | filter | group | member" />
+      </annotations>
+      <CrossLink from="M-TEMPLATE-ENGINE" to="M-SHARED-TYPES" relation="imports types" />
+    </M-TEMPLATE-ENGINE>
+
+    <M-CLIPPER-FORK NAME="clipper-fork" TYPE="ENTRY_POINT" STATUS="implemented">
+      <purpose>Browser extension — asset discovery, authenticated fetch, capture packaging, and transport to Obsidian plugin</purpose>
+      <path>apps/clipper-fork/src/index.ts</path>
+      <depends>M-SHARED-TYPES, M-TEMPLATE-ENGINE</depends>
+      <verification-ref>V-M-CLIPPER-FORK</verification-ref>
+      <annotations>
+        <fn-discoverAssets PURPOSE="Find img[src], img[srcset], picture source[srcset] assets in DOM" />
+        <fn-parseSrcset PURPOSE="Parse srcset attribute string into URL array" />
+        <fn-resetIdCounter PURPOSE="Reset internal asset ID counter for tests" />
+        <fn-fetchAssets PURPOSE="Download selected assets concurrently with timeout and size limits" />
+        <fn-buildCapturePackage PURPOSE="Assemble markdown + attachments into CapturePackage" />
+        <fn-sendCapturePackage PURPOSE="POST CapturePackage to Obsidian plugin via HTTP" />
+        <fn-checkHealth PURPOSE="Check if Obsidian plugin is reachable via /v1/health" />
+        <type-TransportError PURPOSE="Error class for transport failures with code and statusCode" />
+        <type-FetchResult PURPOSE="Fetch outcome: attachments[] + failures[]" />
+        <type-FetchFailure PURPOSE="Single fetch failure with assetId, url, code, message" />
+        <type-PackageInput PURPOSE="Input for buildCapturePackage: source, markdown, attachments, options" />
+        <type-TransportOptions PURPOSE="HTTP transport config: port, authToken, timeoutMs" />
+      </annotations>
+      <CrossLink from="M-CLIPPER-FORK" to="M-SHARED-TYPES" relation="imports types, schemas, and sanitization" />
+      <CrossLink from="M-CLIPPER-FORK" to="M-TEMPLATE-ENGINE" relation="uses for note rendering" />
+    </M-CLIPPER-FORK>
+
+    <M-OBSIDIAN-PLUGIN NAME="obsidian-plugin" TYPE="ENTRY_POINT" STATUS="implemented">
+      <purpose>Obsidian desktop plugin — HTTP receiver, manifest validation, attachment writer, markdown rewriter, note creator with frontmatter</purpose>
+      <path>apps/obsidian-plugin/src/main.ts</path>
+      <depends>M-SHARED-TYPES</depends>
+      <verification-ref>V-M-OBSIDIAN-PLUGIN</verification-ref>
+      <annotations>
+        <fn-startHttpServer PURPOSE="Start localhost HTTP server with /v1/health and /v1/capture endpoints" />
+        <fn-validateCapturePackage PURPOSE="Validate incoming package with Zod schema + version check" />
+        <fn-executeClipTransaction PURPOSE="Orchestrate full clip: resolve paths, write attachments, rewrite markdown, create note, build ResultReport" />
+        <fn-writeAttachment PURPOSE="Decode base64 and write binary file to vault" />
+        <fn-rewriteMarkdown PURPOSE="Replace external image URLs with local wikilinks or relative markdown links" />
+        <fn-resolveNotePath PURPOSE="Resolve note path from pathHint and defaultNoteFolder" />
+        <fn-resolveAttachmentDir PURPOSE="Compute attachment directory from strategy (same-as-note | subfolder | global)" />
+        <fn-resolveAttachmentPath PURPOSE="Compute unique attachment file path with conflict resolution" />
+        <fn-prependFrontmatter PURPOSE="Prepend YAML frontmatter with source meta, assets_saved, assets_failed" />
+        <fn-loadSettings PURPOSE="Merge saved settings with defaults" />
+        <type-VaultAdapter PURPOSE="Interface for vault file operations: writeBinary, writeText, readText, exists, ensureDir, listFiles" />
+        <type-ObsidianVaultAdapter PURPOSE="Obsidian API implementation of VaultAdapter" />
+        <type-AuthClipPlugin PURPOSE="Main plugin class: settings, HTTP server lifecycle" />
+        <type-AuthClipSettingTab PURPOSE="Obsidian settings UI for all plugin options" />
+        <type-ValidationResult PURPOSE="Manifest validation outcome: valid, pkg, errorMessage" />
+        <type-ClipTransactionInput PURPOSE="Transaction input: pkg, settings, vault adapter" />
+        <type-HttpServerResult PURPOSE="Server handle with port and close function" />
+        <type-AttachmentWriteResult PURPOSE="Single write result: status + resolvedPath" />
+        <type-RewriteResult PURPOSE="Rewrite outcome: markdown + rewriteErrors" />
+      </annotations>
+      <CrossLink from="M-OBSIDIAN-PLUGIN" to="M-SHARED-TYPES" relation="imports types, schemas, sanitization, result builder" />
+    </M-OBSIDIAN-PLUGIN>
+
+  </Project>
+</KnowledgeGraph>

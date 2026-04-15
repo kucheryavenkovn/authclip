@@ -1,0 +1,296 @@
+<DevelopmentPlan VERSION="0.3.0">
+  <ArchitectureNotes>
+    <objective>Enable reliable local-first web clipping from authenticated sites, producing offline-capable Obsidian notes with local attachments.</objective>
+    <non-goal>No cloud backend, no multi-user collaboration, no mobile support in v1.</non-goal>
+    <risk-1>Non-standard image loading on complex sites may reduce discovery accuracy.</risk-1>
+    <risk-2>Large payloads may hit transport or memory limits before chunking is implemented.</risk-2>
+    <risk-3>Upstream Web Clipper changes may require fork rebasing.</risk-3>
+  </ArchitectureNotes>
+
+  <Modules>
+    <M-SHARED-TYPES NAME="shared-types" TYPE="UTILITY" LAYER="0" ORDER="1" STATUS="implemented">
+      <contract>
+        <purpose>Provide shared TypeScript types, Zod validation schemas, sanitization utilities, and constants used across all AuthClip packages</purpose>
+        <inputs>
+          <param name="raw-data" type="unknown" />
+        </inputs>
+        <outputs>
+          <param name="validated-data" type="CapturePackage | ResultReport | ClipSettings" />
+          <param name="sanitized-name" type="string" />
+        </outputs>
+        <errors>
+          <error code="VALIDATION_FAILED" />
+        </errors>
+      </contract>
+      <interface>
+        <export-ClipErrorCode PURPOSE="Union type of all error codes" />
+        <export-AssetSource PURPOSE="Asset origin: img-src | img-srcset | picture-srcset | css-bg" />
+        <export-DiscoveredAsset PURPOSE="Discovered image asset with id, url, source, selected" />
+        <export-AttachmentPayload PURPOSE="Binary attachment with metadata and base64 data" />
+        <export-AttachmentStatus PURPOSE="Discriminated union of per-attachment outcomes" />
+        <export-LinkMapEntry PURPOSE="Maps original URL to attachment id" />
+        <export-CapturePackage PURPOSE="Canonical clip manifest" />
+        <export-CaptureSource PURPOSE="Page origin: url, title, capturedAt" />
+        <export-CaptureNote PURPOSE="Note content: pathHint, markdown" />
+        <export-CaptureOptions PURPOSE="Per-capture settings" />
+        <export-CaptureMeta PURPOSE="Optional page metadata" />
+        <export-ResultReport PURPOSE="Plugin-to-extension status report" />
+        <export-ClipSettings PURPOSE="Full configuration model with defaults" />
+        <export-DEFAULT_SETTINGS PURPOSE="Frozen default settings object" />
+        <export-sanitizeFilename PURPOSE="Remove unsafe characters from filenames" />
+        <export-generateSafeName PURPOSE="Generate unique filename with conflict resolution" />
+        <export-extractFilenameFromUrl PURPOSE="Extract filename from URL" />
+        <export-buildResultStatus PURPOSE="Derive overall status from attachment results" />
+        <export-CapturePackageSchema PURPOSE="Zod schema for runtime validation" />
+        <export-ResultReportSchema PURPOSE="Zod schema for result reports" />
+        <export-ClipErrorCodeSchema PURPOSE="Zod enum for error codes" />
+      </interface>
+      <depends>none</depends>
+      <target>
+        <source>packages/shared-types/src/</source>
+        <tests>packages/shared-types/src/__tests__/</tests>
+      </target>
+      <observability>
+        <log-prefix>[SharedTypes]</log-prefix>
+        <critical-block>BLOCK_VALIDATE</critical-block>
+      </observability>
+      <verification-ref>V-M-SHARED-TYPES</verification-ref>
+      <notes>
+        <note-1>Changes to shared types affect both extension and plugin — update both sides together.</note-1>
+        <note-1>sanitizeFilename, generateSafeName, extractFilenameFromUrl are used by both clipper-fork and obsidian-plugin.</note-1>
+      </notes>
+    </M-SHARED-TYPES>
+
+    <M-TEMPLATE-ENGINE NAME="template-engine" TYPE="CORE_LOGIC" LAYER="1" ORDER="1" STATUS="implemented">
+      <contract>
+        <purpose>Render note naming and content templates with variable interpolation, 50+ filters, CSS selector resolution, and schema.org support</purpose>
+        <inputs>
+          <param name="template" type="string" />
+          <param name="context" type="RenderContext" />
+        </inputs>
+        <outputs>
+          <param name="rendered" type="RenderResult (output + errors + hasDeferredVariables)" />
+        </outputs>
+        <errors>
+          <error code="TEMPLATE_PARSE_ERROR" />
+          <error code="FILTER_NOT_FOUND" />
+        </errors>
+      </contract>
+      <interface>
+        <export-tokenize PURPOSE="Convert template string into token stream" />
+        <export-parse PURPOSE="Parse template string into AST" />
+        <export-render PURPOSE="Render template with async context" />
+        <export-renderTemplate PURPOSE="Simplified render: template + variables + currentUrl" />
+        <export-applyFilterDirect PURPOSE="Apply named filter with params" />
+        <export-buildVariables PURPOSE="Build variable map from page data" />
+        <export-validateVariables PURPOSE="Validate variable references in AST" />
+        <export-validateFilters PURPOSE="Validate filter names and params" />
+        <export-createSelectorResolver PURPOSE="Create async CSS selector resolver" />
+      </interface>
+      <depends>M-SHARED-TYPES</depends>
+      <target>
+        <source>packages/template-engine/src/</source>
+        <tests>packages/template-engine/src/ (co-located filter tests)</tests>
+      </target>
+      <observability>
+        <log-prefix>[TemplateEngine]</log-prefix>
+        <critical-block>BLOCK_RENDER</critical-block>
+      </observability>
+      <verification-ref>V-M-TEMPLATE-ENGINE</verification-ref>
+      <notes>
+        <note-1>Template engine is shared between clipper fork and upstream Web Clipper logic.</note-1>
+        <note-1>50+ filters in filters/ directory, each with co-located test file.</note-1>
+        <note-1>Variable resolvers: prompt, selector, selectorHtml, schema, meta, simple.</note-1>
+      </notes>
+    </M-TEMPLATE-ENGINE>
+
+    <M-CLIPPER-FORK NAME="clipper-fork" TYPE="ENTRY_POINT" LAYER="2" ORDER="1" STATUS="implemented">
+      <contract>
+        <purpose>Browser extension that discovers, fetches, and packages page assets from authenticated sessions, then sends to Obsidian plugin via HTTP</purpose>
+        <inputs>
+          <param name="page-DOM" type="Document" />
+          <param name="user-selection" type="DiscoveredAsset[]" />
+        </inputs>
+        <outputs>
+          <param name="capture-package" type="CapturePackage" />
+        </outputs>
+        <errors>
+          <error code="DISCOVERY_FAILED" />
+          <error code="FETCH_FAILED" />
+          <error code="FETCH_FORBIDDEN" />
+          <error code="FETCH_TIMEOUT" />
+          <error code="PAYLOAD_TOO_LARGE" />
+          <error code="PLUGIN_UNAVAILABLE" />
+        </errors>
+      </contract>
+      <interface>
+        <export-discoverAssets PURPOSE="Find img[src], img[srcset], picture source[srcset] in DOM" />
+        <export-parseSrcset PURPOSE="Parse srcset attribute into URL array" />
+        <export-fetchAssets PURPOSE="Download selected assets concurrently" />
+        <export-buildCapturePackage PURPOSE="Assemble CapturePackage from inputs" />
+        <export-sendCapturePackage PURPOSE="POST package to Obsidian plugin HTTP endpoint" />
+        <export-checkHealth PURPOSE="Check plugin availability via /v1/health" />
+      </interface>
+      <depends>M-SHARED-TYPES, M-TEMPLATE-ENGINE</depends>
+      <target>
+        <source>apps/clipper-fork/src/</source>
+        <tests>apps/clipper-fork/src/__tests__/</tests>
+      </target>
+      <observability>
+        <log-prefix>[ClipperFork]</log-prefix>
+        <critical-block>BLOCK_DISCOVER_ASSETS</critical-block>
+        <critical-block>BLOCK_FETCH_ASSET</critical-block>
+        <critical-block>BLOCK_BUILD_PACKAGE</critical-block>
+        <critical-block>BLOCK_TRANSPORT</critical-block>
+      </observability>
+      <verification-ref>V-M-CLIPPER-FORK</verification-ref>
+      <notes>
+        <note-1>Fork must not break standard Web Clipper clipping mode.</note-1>
+        <note-2>All fetch operations use browser session cookies — no auth headers logged.</note-2>
+        <note-3>asset-discovery-wrapper.ts is a background-script-compatible re-export of discovery + fetch logic.</note-3>
+        <note-4>Transport: HTTP localhost, default port 27124, optional X-AuthClip-Token header.</note-4>
+      </notes>
+    </M-CLIPPER-FORK>
+
+    <M-OBSIDIAN-PLUGIN NAME="obsidian-plugin" TYPE="ENTRY_POINT" LAYER="2" ORDER="2" STATUS="implemented">
+      <contract>
+        <purpose>Obsidian desktop plugin that receives capture packages over HTTP, validates manifests, writes attachments, rewrites markdown, creates notes with frontmatter</purpose>
+        <inputs>
+          <param name="capture-package" type="CapturePackage" />
+          <param name="settings" type="ClipSettings" />
+        </inputs>
+        <outputs>
+          <param name="result-report" type="ResultReport" />
+        </outputs>
+        <errors>
+          <error code="MANIFEST_INVALID" />
+          <error code="MANIFEST_VERSION_MISMATCH" />
+          <error code="WRITE_FAILED" />
+          <error code="REWRITE_FAILED" />
+        </errors>
+      </contract>
+      <interface>
+        <export-startHttpServer PURPOSE="Start localhost HTTP server (GET /v1/health, POST /v1/capture)" />
+        <export-validateCapturePackage PURPOSE="Validate incoming package with Zod + version check" />
+        <export-executeClipTransaction PURPOSE="Full clip orchestration: paths → write → rewrite → note → report" />
+        <export-writeAttachment PURPOSE="Decode base64 and write binary to vault" />
+        <export-rewriteMarkdown PURPOSE="Replace external URLs with local wikilinks or relative paths" />
+        <export-resolveNotePath PURPOSE="Compute note path from pathHint" />
+        <export-resolveAttachmentDir PURPOSE="Compute attachment dir from strategy" />
+        <export-resolveAttachmentPath PURPOSE="Compute unique attachment file path" />
+        <export-loadSettings PURPOSE="Merge saved settings with defaults" />
+        <export-AuthClipSettingTab PURPOSE="Obsidian settings UI" />
+        <type-VaultAdapter PURPOSE="Interface for vault file operations" />
+        <type-ObsidianVaultAdapter PURPOSE="Obsidian API implementation of VaultAdapter" />
+      </interface>
+      <depends>M-SHARED-TYPES</depends>
+      <target>
+        <source>apps/obsidian-plugin/src/</source>
+        <tests>apps/obsidian-plugin/src/__tests__/</tests>
+      </target>
+      <observability>
+        <log-prefix>[ObsidianPlugin]</log-prefix>
+        <critical-block>BLOCK_RECEIVE</critical-block>
+        <critical-block>BLOCK_VALIDATE</critical-block>
+        <critical-block>BLOCK_WRITE_FILE</critical-block>
+        <critical-block>BLOCK_REWRITE_LINKS</critical-block>
+        <critical-block>BLOCK_CREATE_NOTE</critical-block>
+      </observability>
+      <verification-ref>V-M-OBSIDIAN-PLUGIN</verification-ref>
+      <notes>
+        <note-1>Must validate incoming packages before any vault writes.</note-1>
+        <note-2>Partial success: note saves even if some attachments fail.</note-2>
+        <note-3>Dedup by SHA-256 hash is NOT yet implemented — name conflict resolution via generateSafeName only.</note-3>
+        <note-4>HTTP server binds to 127.0.0.1 only; optional auth token via X-AuthClip-Token header.</note-4>
+        <note-5>Frontmatter includes: source_title, source_url, captured_at, clipper_mode, author, description, published, site_name, domain, language, word_count, assets_saved, assets_failed.</note-5>
+      </notes>
+    </M-OBSIDIAN-PLUGIN>
+  </Modules>
+
+  <DataFlow>
+    <DF-CLIP_FULL NAME="Full Clip Flow" TRIGGER="User clicks Clip with local assets">
+      <step-1>Extension discovers image assets in page content (img[src], img[srcset], picture source[srcset])</step-1>
+      <step-2>User reviews and selects desired attachments in preview UI</step-2>
+      <step-3>Extension fetches selected assets in browser session context (credentials: include)</step-3>
+      <step-4>Extension assembles CapturePackage (markdown + attachments + linkMap + options + meta)</step-4>
+      <step-5>Extension sends CapturePackage to Obsidian plugin via HTTP POST /v1/capture</step-5>
+      <step-6>Plugin validates auth token (if configured) and JSON body</step-6>
+      <step-7>Plugin validates manifest with Zod schema + version check</step-7>
+      <step-8>Plugin resolves note path and attachment directory from settings</step-8>
+      <step-9>Plugin iterates attachments: check size, resolve unique path, write binary to vault</step-9>
+      <step-10>Plugin rewrites markdown URLs to local wikilinks or relative paths</step-10>
+      <step-11>Plugin prepends YAML frontmatter with source meta and asset counts</step-11>
+      <step-12>Plugin writes note file to vault</step-12>
+      <step-13>Plugin returns ResultReport to extension</step-13>
+      <step-14>Extension displays success summary to user</step-14>
+      <evidence>V-M-CLIPPER-FORK discovery/fetch logs + V-M-OBSIDIAN-PLUGIN write/rewrite logs</evidence>
+    </DF-CLIP_FULL>
+
+    <DF-CLIP_PARTIAL NAME="Partial Success Flow" TRIGGER="Some asset fetches fail during clip">
+      <step-1>Extension discovers and attempts to fetch all selected assets</step-1>
+      <step-2>Failed fetches are recorded with error code and redacted URL</step-2>
+      <step-3>Extension builds CapturePackage with successful attachments only</step-3>
+      <step-4>Plugin saves note with available attachments; lists failures in frontmatter</step-4>
+      <step-5>ResultReport includes saved/failed/skipped counts</step-5>
+      <evidence>FETCH_FAILED log markers + frontmatter assets_failed count</evidence>
+    </DF-CLIP_PARTIAL>
+
+    <DF-DEDUP NAME="Deduplication Flow" TRIGGER="Filename conflict detected (NOT hash-based yet)">
+      <step-1>Plugin lists existing files in attachment directory</step-1>
+      <step-2>generateSafeName appends counter suffix to resolve name conflicts</step-2>
+      <step-3>Future: SHA-256 hash dedup (Phase-4) will skip write when hash matches existing file</step-3>
+      <evidence>Name conflict resolution via generateSafeName</evidence>
+    </DF-DEDUP>
+
+    <DF-PLUGIN_UNAVAILABLE NAME="Plugin Unavailable Fallback" TRIGGER="Extension cannot reach Obsidian plugin">
+      <step-1>Extension detects plugin is unreachable after timeout (checkHealth)</step-1>
+      <step-2>Extension shows clear error: PLUGIN_UNAVAILABLE</step-2>
+      <step-3>Future: fallback "Copy markdown only" button (Phase-4)</step-3>
+      <evidence>PLUGIN_UNAVAILABLE error marker from TransportError</evidence>
+    </DF-PLUGIN_UNAVAILABLE>
+  </DataFlow>
+
+  <ImplementationOrder>
+    <Phase-1 name="Shared Protocol &amp; Types" status="done">
+      <goal>Establish canonical types, schemas, and validation that both extension and plugin depend on</goal>
+      <step-1 module="M-SHARED-TYPES" status="done" verification="V-M-SHARED-TYPES">Define CapturePackage, AttachmentPayload, ResultReport, ClipSettings, error codes, sanitization utilities, and Zod schemas</step-1>
+      <step-2 module="M-TEMPLATE-ENGINE" status="done" verification="V-M-TEMPLATE-ENGINE">Implement template engine with tokenizer, parser, renderer, 50+ filters, variable resolvers</step-2>
+    </Phase-1>
+
+    <Phase-2 name="Browser Capture MVP" status="done">
+      <goal>Implement asset discovery, authenticated fetch, and packaging in the browser extension</goal>
+      <step-1 module="M-CLIPPER-FORK" status="done" verification="V-M-CLIPPER-FORK">Implement asset discovery for img/src/srcset</step-1>
+      <step-2 module="M-CLIPPER-FORK" status="done" verification="V-M-CLIPPER-FORK">Implement asset fetch in browser session context (credentials: include)</step-2>
+      <step-3 module="M-CLIPPER-FORK" status="done" verification="V-M-CLIPPER-FORK">Implement CapturePackage builder with linkMap and pathHint generation</step-3>
+      <step-4 module="M-CLIPPER-FORK" status="done" verification="V-M-CLIPPER-FORK">Implement HTTP transport client with health check and auth token support</step-4>
+    </Phase-2>
+
+    <Phase-3 name="Obsidian Plugin MVP" status="done">
+      <goal>Implement HTTP receiver, manifest validation, attachment writer, markdown rewriter, and note creator</goal>
+      <step-1 module="M-OBSIDIAN-PLUGIN" status="done" verification="V-M-OBSIDIAN-PLUGIN">Implement HTTP server with /v1/health and /v1/capture endpoints, auth token validation</step-1>
+      <step-2 module="M-OBSIDIAN-PLUGIN" status="done" verification="V-M-OBSIDIAN-PLUGIN">Implement manifest validator with Zod schema and version check</step-2>
+      <step-3 module="M-OBSIDIAN-PLUGIN" status="done" verification="V-M-OBSIDIAN-PLUGIN">Implement attachment writer with base64 decoding and directory creation</step-3>
+      <step-4 module="M-OBSIDIAN-PLUGIN" status="done" verification="V-M-OBSIDIAN-PLUGIN">Implement markdown rewriter (wikilink + relative modes) for markdown and HTML img tags</step-4>
+      <step-5 module="M-OBSIDIAN-PLUGIN" status="done" verification="V-M-OBSIDIAN-PLUGIN">Implement note creator with YAML frontmatter (source meta + asset counts)</step-5>
+      <step-6 module="M-OBSIDIAN-PLUGIN" status="done" verification="V-M-OBSIDIAN-PLUGIN">Implement settings UI with all configuration options</step-6>
+      <step-7 module="M-OBSIDIAN-PLUGIN" status="done" verification="V-M-OBSIDIAN-PLUGIN">Implement path resolver (note path, attachment dir strategies, unique file names)</step-7>
+      <step-8 module="M-OBSIDIAN-PLUGIN" status="done" verification="V-M-OBSIDIAN-PLUGIN">Implement VaultAdapter interface and ObsidianVaultAdapter implementation</step-8>
+    </Phase-3>
+
+    <Phase-4 name="Integration &amp; Polish" status="pending">
+      <goal>End-to-end integration, hash-based dedup, CSS background images, retry, security hardening</goal>
+      <step-1 module="M-OBSIDIAN-PLUGIN" status="pending" verification="V-M-OBSIDIAN-PLUGIN">Implement SHA-256 hash-based deduplication</step-1>
+      <step-2 module="M-CLIPPER-FORK" status="pending" verification="V-M-CLIPPER-FORK">Implement preview/selection UI for attachments</step-2>
+      <step-3 module="M-CLIPPER-FORK" status="pending" verification="V-M-CLIPPER-FORK">Add CSS background-image discovery</step-3>
+      <step-4 module="M-CLIPPER-FORK" status="pending" verification="V-M-CLIPPER-FORK">Implement partial success flow and enhanced error reporting</step-4>
+      <step-5 module="M-CLIPPER-FORK" status="pending" verification="V-M-CLIPPER-FORK">Security: token redaction audit, path traversal prevention verification, filename sanitization audit</step-5>
+      <step-6 module="M-CLIPPER-FORK" status="pending" verification="V-M-CLIPPER-FORK">Implement fallback "copy markdown only" when plugin unavailable</step-6>
+    </Phase-4>
+  </ImplementationOrder>
+
+  <ExecutionPolicy>
+    <default-profile>balanced</default-profile>
+    <controller-owns>docs/development-plan.xml, docs/knowledge-graph.xml, docs/verification-plan.xml</controller-owns>
+    <worker-owns>Only module source files and module-local tests inside the approved write scope.</worker-owns>
+  </ExecutionPolicy>
+</DevelopmentPlan>

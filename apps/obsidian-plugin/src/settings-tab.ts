@@ -1,3 +1,18 @@
+// FILE: apps/obsidian-plugin/src/settings-tab.ts
+// VERSION: 0.2.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Obsidian settings UI for all AuthClip plugin configuration options
+//   SCOPE: Settings form with port, auth token, note folder, attachment folder strategy, rewrite mode, source URL toggle
+//   DEPENDS: M-OBSIDIAN-PLUGIN (ClipSettings)
+//   LINKS: M-OBSIDIAN-PLUGIN
+//   ROLE: UI_COMPONENT
+//   MAP_MODE: EXPORTS
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   AuthClipSettingTab - Obsidian PluginSettingTab with all configuration fields
+// END_MODULE_MAP
+
 import type { App, Plugin } from "obsidian";
 import { PluginSettingTab, Setting } from "obsidian";
 import type { ClipSettings } from "./settings";

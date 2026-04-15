@@ -1,3 +1,36 @@
+// FILE: packages/shared-types/src/schemas.ts
+// VERSION: 0.2.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Zod validation schemas for all shared types (runtime validation)
+//   SCOPE: All Zod schemas re-exported from index.ts
+//   DEPENDS: zod
+//   LINKS: M-SHARED-TYPES
+//   ROLE: RUNTIME
+//   MAP_MODE: EXPORTS
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   ClipErrorCodeSchema - Zod enum for error codes
+//   AssetSourceSchema - Zod enum for asset sources
+//   DiscoveredAssetSchema - Zod object for discovered assets
+//   AttachmentPayloadSchema - Zod object for attachment payloads
+//   LinkMapEntrySchema - Zod object for link map entries
+//   RewriteModeSchema - Zod enum for rewrite modes
+//   CaptureSourceSchema - Zod object for capture source
+//   CaptureNoteSchema - Zod object for capture note
+//   CaptureOptionsSchema - Zod object for capture options
+//   CaptureMetaSchema - Zod object for capture metadata
+//   CapturePackageSchema - Zod object for full capture package
+//   AttachmentStatusSavedSchema - Zod object for saved status
+//   AttachmentStatusDeduplicatedSchema - Zod object for deduped status
+//   AttachmentStatusFailedSchema - Zod object for failed status
+//   AttachmentStatusSkippedSchema - Zod object for skipped status
+//   AttachmentStatusSchema - Zod discriminated union for all statuses
+//   ClipResultStatusSchema - Zod enum for result status
+//   ResultReportErrorSchema - Zod object for error entries
+//   ResultReportSchema - Zod object for result reports
+// END_MODULE_MAP
+
 import { z } from "zod";
 
 export const ClipErrorCodeSchema = z.enum([

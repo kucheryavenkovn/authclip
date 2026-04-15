@@ -1,3 +1,19 @@
+// FILE: apps/obsidian-plugin/src/manifest-validator.ts
+// VERSION: 0.2.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Validate incoming CapturePackage manifests with Zod schema and version check
+//   SCOPE: Package validation, version compatibility check
+//   DEPENDS: M-SHARED-TYPES (CapturePackageSchema, CapturePackage)
+//   LINKS: M-OBSIDIAN-PLUGIN
+//   ROLE: RUNTIME
+//   MAP_MODE: EXPORTS
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   ValidationResult - Validation outcome: valid, pkg, errorMessage
+//   validateCapturePackage - Validate raw input against CapturePackageSchema
+// END_MODULE_MAP
+
 import { CapturePackageSchema } from "@authclip/shared-types";
 import type { CapturePackage } from "@authclip/shared-types";
 
@@ -9,7 +25,15 @@ export interface ValidationResult {
 
 const SUPPORTED_MAJOR = 1;
 
+// START_CONTRACT: validateCapturePackage
+//   PURPOSE: Validate raw input against CapturePackage Zod schema with version check
+//   INPUTS: { raw: unknown }
+//   OUTPUTS: { ValidationResult - valid, parsed package, or error message }
+//   SIDE_EFFECTS: none
+//   LINKS: M-SHARED-TYPES, M-OBSIDIAN-PLUGIN
+// END_CONTRACT: validateCapturePackage
 export function validateCapturePackage(raw: unknown): ValidationResult {
+  // START_BLOCK_VALIDATE
   if (!raw || typeof raw !== "object") {
     return {
       valid: false,
@@ -45,4 +69,5 @@ export function validateCapturePackage(raw: unknown): ValidationResult {
   }
 
   return { valid: true, pkg: parseResult.data, errorMessage: null };
+  // END_BLOCK_VALIDATE
 }

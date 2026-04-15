@@ -1,3 +1,20 @@
+// FILE: packages/template-engine/src/index.ts
+// VERSION: 0.2.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Barrel re-export of template engine: tokenizer, parser, renderer, filters, variable resolvers
+//   SCOPE: All public exports of the template engine package
+//   DEPENDS: M-SHARED-TYPES
+//   LINKS: M-TEMPLATE-ENGINE
+//   ROLE: BARREL
+//   MAP_MODE: SUMMARY
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   Re-exports: tokenize, parse, render, renderAST, renderTemplate, applyFilterDirect, applyFilters,
+//   buildVariables, addSchemaOrgDataToVariables, generateFrontmatter, formatPropertyValue,
+//   resolveVariable, resolveVariableAsync, getNestedValue, valueToString, setMessageSender, setSelectorSender
+// END_MODULE_MAP
+
 export { tokenize, formatToken, formatError } from './tokenizer';
 export type { TokenType, Token, TokenizerError, TokenizerResult } from './tokenizer';
 

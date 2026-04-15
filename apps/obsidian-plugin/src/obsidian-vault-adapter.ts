@@ -1,3 +1,18 @@
+// FILE: apps/obsidian-plugin/src/obsidian-vault-adapter.ts
+// VERSION: 0.2.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Obsidian API implementation of VaultAdapter interface
+//   SCOPE: Binary/text file read/write, directory creation, file listing, path normalization
+//   DEPENDS: M-OBSIDIAN-PLUGIN (VaultAdapter), obsidian (App, TFile)
+//   LINKS: M-OBSIDIAN-PLUGIN
+//   ROLE: RUNTIME
+//   MAP_MODE: EXPORTS
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   ObsidianVaultAdapter - Concrete vault adapter using Obsidian's vault API
+// END_MODULE_MAP
+
 import type { VaultAdapter } from "./vault-adapter";
 import { TFile, type App } from "obsidian";
 

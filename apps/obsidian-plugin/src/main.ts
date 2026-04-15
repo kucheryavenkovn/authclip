@@ -1,3 +1,18 @@
+// FILE: apps/obsidian-plugin/src/main.ts
+// VERSION: 0.2.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Main Obsidian plugin class — manages settings, HTTP server lifecycle, and plugin registration
+//   SCOPE: Plugin onload/onunload, settings load/save, HTTP server start/stop/restart
+//   DEPENDS: M-SHARED-TYPES (ClipSettings), M-OBSIDIAN-PLUGIN (DEFAULT_SETTINGS, loadSettings, AuthClipSettingTab, startHttpServer, ObsidianVaultAdapter)
+//   LINKS: M-OBSIDIAN-PLUGIN
+//   ROLE: ENTRY_POINT
+//   MAP_MODE: EXPORTS
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   AuthClipPlugin - Main plugin class (default export)
+// END_MODULE_MAP
+
 import { Plugin, Notice } from "obsidian";
 import type { ClipSettings } from "./settings";
 import { DEFAULT_SETTINGS, loadSettings } from "./settings";

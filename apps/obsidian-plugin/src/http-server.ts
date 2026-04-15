@@ -1,3 +1,19 @@
+// FILE: apps/obsidian-plugin/src/http-server.ts
+// VERSION: 0.2.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Localhost HTTP server for receiving CapturePackages from browser extension
+//   SCOPE: HTTP server lifecycle, health endpoint, capture endpoint, auth token validation, body size limit
+//   DEPENDS: M-SHARED-TYPES (ClipSettings), M-OBSIDIAN-PLUGIN (VaultAdapter, validateCapturePackage, executeClipTransaction)
+//   LINKS: M-OBSIDIAN-PLUGIN
+//   ROLE: RUNTIME
+//   MAP_MODE: EXPORTS
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   HttpServerResult - Server handle with port and close function
+//   startHttpServer - Start localhost HTTP server on 127.0.0.1
+// END_MODULE_MAP
+
 import type { IncomingMessage, ServerResponse } from "http";
 import { createServer } from "http";
 import type { ClipSettings } from "@authclip/shared-types";

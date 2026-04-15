@@ -1,3 +1,21 @@
+// FILE: apps/clipper-fork/src/transport.ts
+// VERSION: 0.2.0
+// START_MODULE_CONTRACT
+//   PURPOSE: HTTP transport client for sending CapturePackages to Obsidian plugin
+//   SCOPE: Health check, capture POST, auth token header, timeout handling, error classification
+//   DEPENDS: M-SHARED-TYPES (ResultReport)
+//   LINKS: M-CLIPPER-FORK
+//   ROLE: RUNTIME
+//   MAP_MODE: EXPORTS
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   TransportOptions - HTTP config: port, authToken, timeoutMs
+//   TransportError - Error class with code and statusCode
+//   checkHealth - GET /v1/health to check plugin availability
+//   sendCapturePackage - POST CapturePackage to /v1/capture
+// END_MODULE_MAP
+
 import type { ResultReport } from "@authclip/shared-types";
 
 export interface TransportOptions {
@@ -17,6 +35,13 @@ export class TransportError extends Error {
   }
 }
 
+// START_CONTRACT: checkHealth
+//   PURPOSE: Check if Obsidian plugin is reachable
+//   INPUTS: { options: TransportOptions }
+//   OUTPUTS: { boolean - true if plugin responds 200 }
+//   SIDE_EFFECTS: Network request
+//   LINKS: M-CLIPPER-FORK
+// END_CONTRACT: checkHealth
 export async function checkHealth(options: TransportOptions): Promise<boolean> {
   try {
     const controller = new AbortController();
@@ -31,10 +56,18 @@ export async function checkHealth(options: TransportOptions): Promise<boolean> {
   }
 }
 
+// START_CONTRACT: sendCapturePackage
+//   PURPOSE: POST CapturePackage to Obsidian plugin and return ResultReport
+//   INPUTS: { pkg: unknown, options: TransportOptions }
+//   OUTPUTS: { ResultReport - plugin response }
+//   SIDE_EFFECTS: Network request with optional auth token header
+//   LINKS: M-CLIPPER-FORK
+// END_CONTRACT: sendCapturePackage
 export async function sendCapturePackage(
   pkg: unknown,
   options: TransportOptions
 ): Promise<ResultReport> {
+  // START_BLOCK_TRANSPORT
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 60_000);
 
@@ -76,4 +109,5 @@ export async function sendCapturePackage(
       "PLUGIN_UNAVAILABLE"
     );
   }
+  // END_BLOCK_TRANSPORT
 }

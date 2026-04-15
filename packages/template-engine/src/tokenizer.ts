@@ -1,3 +1,24 @@
+// FILE: packages/template-engine/src/tokenizer.ts
+// VERSION: 0.2.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Convert template strings into a stream of tokens for parsing
+//   SCOPE: Tokenization of text, variable tags {{ }}, logic tags {% %}, CSS selectors, expressions
+//   DEPENDS: none
+//   LINKS: M-TEMPLATE-ENGINE
+//   ROLE: RUNTIME
+//   MAP_MODE: EXPORTS
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   TokenType - Union of all token type literals
+//   Token - Token with type, value, line, column, trim flags
+//   TokenizerError - Error with message, line, column
+//   TokenizerResult - Result with tokens[] and errors[]
+//   tokenize - Convert template string into token stream
+//   formatToken - Format token for debugging
+//   formatError - Format error with position
+// END_MODULE_MAP
+
 // Template tokenizer for the Web Clipper template engine
 // Converts template strings into a stream of tokens for parsing
 //

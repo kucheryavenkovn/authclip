@@ -1,3 +1,20 @@
+// FILE: packages/shared-types/src/sanitize.ts
+// VERSION: 0.2.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Filename sanitization and safe name generation for vault writes
+//   SCOPE: sanitizeFilename, generateSafeName, extractFilenameFromUrl
+//   DEPENDS: none
+//   LINKS: M-SHARED-TYPES
+//   ROLE: RUNTIME
+//   MAP_MODE: EXPORTS
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   sanitizeFilename - Remove unsafe characters, enforce length limit
+//   generateSafeName - Generate unique filename with conflict counter
+//   extractFilenameFromUrl - Extract filename from URL, handle data:/blob:
+// END_MODULE_MAP
+
 const UNSAFE_CHARS = /[<>:"/\\|?*\x00-\x1f!]/g;
 const REPEATED_DOTS = /\.{2,}/g;
 const CONSECUTIVE_DASHES = /-{2,}/g;

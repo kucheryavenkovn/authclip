@@ -1,3 +1,18 @@
+// FILE: packages/shared-types/src/index.ts
+// VERSION: 0.2.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Barrel re-export of all shared types, schemas, sanitization utilities, and constants
+//   SCOPE: Re-exports from errors, attachment, link-map, capture-package, settings, result-report, sanitize, schemas
+//   DEPENDS: none (internal barrel)
+//   LINKS: M-SHARED-TYPES
+//   ROLE: BARREL
+//   MAP_MODE: SUMMARY
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   Re-exports all types, schemas, sanitization functions, and DEFAULT_SETTINGS
+// END_MODULE_MAP
+
 export type { ClipErrorCode } from "./errors";
 export type {
   AssetSource,

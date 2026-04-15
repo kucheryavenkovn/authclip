@@ -1,3 +1,21 @@
+// FILE: apps/clipper-fork/src/asset-fetcher.ts
+// VERSION: 0.2.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Download selected assets in browser session context with concurrency, timeout, and size limits
+//   SCOPE: Concurrent asset fetching, base64 encoding, MIME detection, error classification
+//   DEPENDS: M-SHARED-TYPES (DiscoveredAsset, AttachmentPayload, ClipErrorCode, extractFilenameFromUrl, sanitizeFilename)
+//   LINKS: M-CLIPPER-FORK
+//   ROLE: RUNTIME
+//   MAP_MODE: EXPORTS
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   FetchFailure - Single fetch failure record
+//   FetchResult - Outcome: attachments[] + failures[]
+//   FetchOptions - Config: concurrency, maxBytes, timeoutMs
+//   fetchAssets - Download selected assets concurrently
+// END_MODULE_MAP
+
 import type { DiscoveredAsset, AttachmentPayload, ClipErrorCode } from "@authclip/shared-types";
 import { extractFilenameFromUrl, sanitizeFilename } from "@authclip/shared-types";
 
@@ -136,10 +154,18 @@ async function fetchSingle(
   }
 }
 
+// START_CONTRACT: fetchAssets
+//   PURPOSE: Download selected assets concurrently with timeout and size limits
+//   INPUTS: { assets: DiscoveredAsset[], options: FetchOptions }
+//   OUTPUTS: { FetchResult - attachments + failures }
+//   SIDE_EFFECTS: Network requests with credentials: include
+//   LINKS: M-SHARED-TYPES
+// END_CONTRACT: fetchAssets
 export async function fetchAssets(
   assets: DiscoveredAsset[],
   options?: FetchOptions
 ): Promise<FetchResult> {
+  // START_BLOCK_FETCH_ASSET
   const selected = assets.filter((a) => a.selected);
   const concurrency = options?.concurrency ?? DEFAULT_CONCURRENCY;
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -168,4 +194,5 @@ export async function fetchAssets(
   await Promise.all(workers);
 
   return { attachments, failures };
+  // END_BLOCK_FETCH_ASSET
 }
