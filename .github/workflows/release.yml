@@ -1,0 +1,97 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. 0.3.0). Leave empty to auto-detect from clipper-fork package.json"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: >=9.0.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ">=20"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build shared-types
+        run: pnpm --filter @authclip/shared-types build
+
+      - name: Build Chrome extension (production)
+        run: pnpm --filter @authclip/clipper-fork build:extension:prod
+        env:
+          NODE_ENV: production
+
+      - name: Build Obsidian plugin (production)
+        run: pnpm --filter @authclip/obsidian-plugin build
+        env:
+          NODE_ENV: production
+
+      - name: Package Chrome extension
+        run: |
+          cd apps/clipper-fork/dist-extension
+          zip -r $GITHUB_WORKSPACE/authclip-chrome-extension.zip .
+
+      - name: Package Obsidian plugin
+        run: |
+          cd apps/obsidian-plugin/dist
+          zip -r $GITHUB_WORKSPACE/authclip-obsidian-plugin.zip .
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            VERSION=$(jq -r .version apps/clipper-fork/package.json)
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create or update GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          body: |
+            ## AuthClip v${{ steps.version.outputs.version }}
+
+            ### Downloads
+
+            | Artifact | Description |
+            |---|---|
+            | `authclip-chrome-extension.zip` | Chrome browser extension (load unpacked) |
+            | `authclip-obsidian-plugin.zip` | Obsidian plugin (copy to `.obsidian/plugins/authclip/`) |
+
+            ### Installation
+
+            **Chrome Extension:**
+            1. Download and unzip `authclip-chrome-extension.zip`
+            2. Open `chrome://extensions/` → enable Developer mode
+            3. Click "Load unpacked" → select the unzipped folder
+
+            **Obsidian Plugin:**
+            1. Download and unzip `authclip-obsidian-plugin.zip`
+            2. Copy all files to `<vault>/.obsidian/plugins/authclip/`
+            3. Enable plugin in Obsidian Settings → Community Plugins
+          files: |
+            authclip-chrome-extension.zip
+            authclip-obsidian-plugin.zip
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
