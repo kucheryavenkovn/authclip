@@ -355,11 +355,13 @@ describe("rewriteMarkdown", () => {
     expect(rewriteErrors).toHaveLength(1);
   });
 
-  it("emits BLOCK_REWRITE_LINKS marker", () => {
+  it("emits BLOCK_REWRITE_LINKS marker with mode and error count", () => {
     const trace = new TraceCollector();
     rewriteMarkdown(
-      "text", [], new Map(), "wikilink", "assets", "note.md", trace.log
+      "plain text", [], new Map(), "wikilink", "assets", "note.md", trace.log
     );
     trace.assertMarker("ObsidianPlugin][rewriteMarkdown][BLOCK_REWRITE_LINKS");
+    trace.assertMarkerContaining("mode=wikilink");
+    trace.assertMarkerContaining("errors=0");
   });
 });

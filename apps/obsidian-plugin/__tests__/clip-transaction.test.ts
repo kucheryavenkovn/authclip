@@ -516,4 +516,34 @@ describe("executeClipTransaction", () => {
     });
     trace.assertMarker("ObsidianPlugin][resolveAttachmentPath][BLOCK_RESOLVE_PATH");
   });
+
+  it("BLOCK_RECEIVE appears before BLOCK_CREATE_NOTE in trace order", async () => {
+    const { vault } = makeVault();
+    const trace = new TraceCollector();
+    await executeClipTransaction({
+      pkg: makePackage(),
+      settings: { ...DEFAULT_SETTINGS },
+      vault,
+      log: trace.log,
+    });
+    trace.assertMarkerBefore(
+      "ObsidianPlugin][executeClipTransaction][BLOCK_RECEIVE",
+      "ObsidianPlugin][executeClipTransaction][BLOCK_CREATE_NOTE"
+    );
+  });
+
+  it("BLOCK_WRITE_FILE appears before BLOCK_REWRITE_LINKS in trace order", async () => {
+    const { vault } = makeVault();
+    const trace = new TraceCollector();
+    await executeClipTransaction({
+      pkg: makePackage(),
+      settings: { ...DEFAULT_SETTINGS },
+      vault,
+      log: trace.log,
+    });
+    trace.assertMarkerBefore(
+      "ObsidianPlugin][writeAttachment][BLOCK_WRITE_FILE",
+      "ObsidianPlugin][rewriteMarkdown][BLOCK_REWRITE_LINKS"
+    );
+  });
 });

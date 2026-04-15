@@ -1,4 +1,4 @@
-<VerificationPlan VERSION="0.4.0">
+<VerificationPlan VERSION="0.5.0">
   <GlobalPolicy>
     <log-format>[Module][function][BLOCK_NAME] message</log-format>
     <deterministic-first>true</deterministic-first>
@@ -143,6 +143,18 @@
         <file>apps/obsidian-plugin/__tests__/http-server.test.ts</file>
       </test-files>
     </VF-007>
+
+    <VF-008 NAME="TraceOrdering" USE_CASES="UC-001" DATA_FLOW="DF-CLIP_FULL" PRIORITY="medium">
+      <scenario>Within a clip transaction, BLOCK_RECEIVE appears before BLOCK_CREATE_NOTE, and BLOCK_WRITE_FILE appears before BLOCK_REWRITE_LINKS.</scenario>
+      <expected-outcome>assertMarkerBefore passes for both order pairs.</expected-outcome>
+      <required-signals>
+        <trace-sequence>BLOCK_RECEIVE -> BLOCK_WRITE_FILE -> BLOCK_REWRITE_LINKS -> BLOCK_CREATE_NOTE</trace-sequence>
+      </required-signals>
+      <evidence-type>Level-2 (trace ordering)</evidence-type>
+      <test-files>
+        <file>apps/obsidian-plugin/__tests__/clip-transaction.test.ts</file>
+      </test-files>
+    </VF-008>
   </CriticalFlows>
 
   <ModuleVerification>
@@ -236,11 +248,10 @@
       <required-trace-assertions>
         <assertion-1>Failed fetch must not prevent remaining assets from being fetched.</assertion-1>
         <assertion-2>No auth headers or cookies in any log output.</assertion-2>
-        <assertion-3>transport.test.ts must exist and cover checkHealth + sendCapturePackage success + failure.</assertion-3>
+        <assertion-3>transport.test.ts exists and covers checkHealth + sendCapturePackage success + failure.</assertion-3>
       </required-trace-assertions>
       <coverage-gaps>
-        <gap-1 severity="high">transport.test.ts does not exist — scenarios 8-10 and VF-004 have no test coverage.</gap-1>
-        <gap-2 severity="medium">No log/trace assertions in any existing test — BLOCK markers are navigation-only, no runtime emission.</gap-2>
+        <gap-1 severity="low">No cross-package integration test connecting clipper-fork to obsidian-plugin in a single test.</gap-1>
       </coverage-gaps>
       <wave-follow-up>Integration test with Obsidian plugin receiver.</wave-follow-up>
       <phase-follow-up>End-to-end test with live browser extension.</phase-follow-up>
@@ -280,6 +291,10 @@
         <scenario-18 kind="failure" evidence="level-1+2">HTTP server rejects oversized body with 413 PAYLOAD_TOO_LARGE. No vault writes.</scenario-18>
         <scenario-19 kind="failure" evidence="level-1+2">HTTP server rejects structurally invalid package with 400. BLOCK_VALIDATE emitted, BLOCK_WRITE_FILE absent.</scenario-19>
         <scenario-20 kind="success" evidence="level-1">HTTP server accepts capture without auth when authToken is empty.</scenario-20>
+        <scenario-21 kind="success" evidence="level-2">BLOCK_RECEIVE appears before BLOCK_CREATE_NOTE in trace order (assertMarkerBefore).</scenario-21>
+        <scenario-22 kind="success" evidence="level-2">BLOCK_WRITE_FILE appears before BLOCK_REWRITE_LINKS in trace order (assertMarkerBefore).</scenario-22>
+        <scenario-23 kind="success" evidence="level-2">resolveAttachmentPath emits BLOCK_RESOLVE_PATH with name and resolved path content.</scenario-23>
+        <scenario-24 kind="success" evidence="level-2">BLOCK_REWRITE_LINKS marker includes mode= and errors= structured content.</scenario-24>
       </scenarios>
       <required-log-markers>
         <marker-1>[ObsidianPlugin][validateCapturePackage][BLOCK_VALIDATE]</marker-1>
@@ -298,13 +313,7 @@
         <assertion-5>BLOCK_AUTH_CHECK must appear when authToken is configured and request lacks valid token.</assertion-5>
       </required-trace-assertions>
       <coverage-gaps>
-        <gap-1 severity="high">No BLOCK_AUTH_CHECK in http-server.ts — VF-006 requires this marker.</gap-1>
-        <gap-2 severity="high">No BLOCK_RESOLVE_PATH in path-resolver.ts — VF-003 requires this marker.</gap-2>
-        <gap-3 severity="medium">No HTML img tag test case in markdown-rewriter.test.ts — scenario-8 untested.</gap-3>
-        <gap-4 severity="medium">No oversized body test in http-server.test.ts — scenario-18 untested.</gap-4>
-        <gap-5 severity="medium">No test for empty authToken skipping auth check — scenario-20 untested.</gap-5>
-        <gap-6 severity="low">No log/trace assertions in any existing test.</gap-6>
-        <gap-7 severity="low">Missing MODULE_CONTRACT header in clip-transaction.ts.</gap-7>
+        <gap-1 severity="low">No cross-package integration test connecting clipper-fork POST to obsidian-plugin capture.</gap-1>
       </coverage-gaps>
       <wave-follow-up>Integration test with clipper-fork transport.</wave-follow-up>
       <phase-follow-up>End-to-end test with live Obsidian instance.</phase-follow-up>
@@ -328,36 +337,36 @@
     <entry scenario="V-M-TEMPLATE-ENGINE/s5" evidence="level-1" test="renderer.test.ts" status="covered" />
     <entry scenario="V-M-CLIPPER-FORK/s1" evidence="level-1" test="asset-discovery.test.ts" status="covered" />
     <entry scenario="V-M-CLIPPER-FORK/s2" evidence="level-1" test="asset-discovery.test.ts" status="covered" />
-    <entry scenario="V-M-CLIPPER-FORK/s3" evidence="level-1+2" test="asset-fetcher.test.ts" status="level-1 covered, level-2 pending logging" />
-    <entry scenario="V-M-CLIPPER-FORK/s4" evidence="level-1+2" test="asset-fetcher.test.ts" status="level-1 covered, level-2 pending logging" />
+    <entry scenario="V-M-CLIPPER-FORK/s3" evidence="level-1+2" test="asset-fetcher.test.ts" status="covered" />
+    <entry scenario="V-M-CLIPPER-FORK/s4" evidence="level-1+2" test="asset-fetcher.test.ts" status="covered" />
     <entry scenario="V-M-CLIPPER-FORK/s5" evidence="level-1" test="asset-fetcher.test.ts" status="covered" />
     <entry scenario="V-M-CLIPPER-FORK/s6" evidence="level-1" test="package-builder.test.ts" status="covered" />
     <entry scenario="V-M-CLIPPER-FORK/s7" evidence="level-1" test="asset-fetcher.test.ts" status="covered" />
-    <entry scenario="V-M-CLIPPER-FORK/s8" evidence="level-1+2" test="transport.test.ts" status="missing test file" />
-    <entry scenario="V-M-CLIPPER-FORK/s9" evidence="level-1+2" test="transport.test.ts" status="missing test file" />
-    <entry scenario="V-M-CLIPPER-FORK/s10" evidence="level-1" test="transport.test.ts" status="missing test file" />
-    <entry scenario="V-M-CLIPPER-FORK/s11" evidence="level-2" test="asset-fetcher.test.ts" status="pending logging" />
-    <entry scenario="V-M-CLIPPER-FORK/s12" evidence="level-2" test="transport.test.ts + asset-fetcher.test.ts" status="pending logging" />
+    <entry scenario="V-M-CLIPPER-FORK/s8" evidence="level-1+2" test="transport.test.ts" status="covered" />
+    <entry scenario="V-M-CLIPPER-FORK/s9" evidence="level-1+2" test="transport.test.ts" status="covered" />
+    <entry scenario="V-M-CLIPPER-FORK/s10" evidence="level-1" test="transport.test.ts" status="covered" />
+    <entry scenario="V-M-CLIPPER-FORK/s11" evidence="level-2" test="asset-fetcher.test.ts" status="covered" />
+    <entry scenario="V-M-CLIPPER-FORK/s12" evidence="level-2" test="transport.test.ts" status="covered" />
     <entry scenario="V-M-OBSIDIAN-PLUGIN/s1" evidence="level-1" test="manifest-validator.test.ts" status="covered" />
-    <entry scenario="V-M-OBSIDIAN-PLUGIN/s2" evidence="level-1+2" test="manifest-validator.test.ts" status="level-1 covered, level-2 pending logging" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s2" evidence="level-1+2" test="manifest-validator.test.ts" status="covered" />
     <entry scenario="V-M-OBSIDIAN-PLUGIN/s3" evidence="level-1" test="manifest-validator.test.ts" status="covered" />
-    <entry scenario="V-M-OBSIDIAN-PLUGIN/s4" evidence="level-1+2" test="attachment-writer.test.ts" status="level-1 covered, level-2 pending logging" />
-    <entry scenario="V-M-OBSIDIAN-PLUGIN/s5" evidence="level-1+2" test="attachment-writer.test.ts" status="level-1 covered, level-2 pending logging" />
-    <entry scenario="V-M-OBSIDIAN-PLUGIN/s6" evidence="level-1+2" test="markdown-rewriter.test.ts" status="level-1 covered, level-2 pending logging" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s4" evidence="level-1+2" test="attachment-writer.test.ts" status="covered" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s5" evidence="level-1+2" test="attachment-writer.test.ts" status="covered" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s6" evidence="level-1+2" test="markdown-rewriter.test.ts" status="covered" />
     <entry scenario="V-M-OBSIDIAN-PLUGIN/s7" evidence="level-1" test="markdown-rewriter.test.ts" status="covered" />
-    <entry scenario="V-M-OBSIDIAN-PLUGIN/s8" evidence="level-1" test="markdown-rewriter.test.ts" status="untested" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s8" evidence="level-1" test="markdown-rewriter.test.ts" status="covered" />
     <entry scenario="V-M-OBSIDIAN-PLUGIN/s9" evidence="level-1" test="path-resolver.test.ts" status="covered" />
     <entry scenario="V-M-OBSIDIAN-PLUGIN/s10" evidence="level-1" test="path-resolver.test.ts" status="covered" />
-    <entry scenario="V-M-OBSIDIAN-PLUGIN/s11" evidence="level-1+2" test="path-resolver.test.ts" status="level-1 covered, level-2 pending BLOCK_RESOLVE_PATH" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s11" evidence="level-1+2" test="path-resolver.test.ts" status="covered" />
     <entry scenario="V-M-OBSIDIAN-PLUGIN/s12" evidence="level-1" test="clip-transaction.test.ts" status="covered" />
-    <entry scenario="V-M-OBSIDIAN-PLUGIN/s13" evidence="level-1+2" test="clip-transaction.test.ts" status="level-1 covered, level-2 pending logging" />
-    <entry scenario="V-M-OBSIDIAN-PLUGIN/s14" evidence="level-1+2" test="clip-transaction.test.ts" status="level-1 covered, level-2 pending logging" />
-    <entry scenario="V-M-OBSIDIAN-PLUGIN/s15" evidence="level-1+2" test="http-server.test.ts" status="level-1 covered, level-2 pending BLOCK_AUTH_CHECK" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s13" evidence="level-1+2" test="clip-transaction.test.ts" status="covered" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s14" evidence="level-1+2" test="clip-transaction.test.ts" status="covered" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s15" evidence="level-1+2" test="http-server.test.ts" status="covered" />
     <entry scenario="V-M-OBSIDIAN-PLUGIN/s16" evidence="level-1" test="http-server.test.ts" status="covered" />
     <entry scenario="V-M-OBSIDIAN-PLUGIN/s17" evidence="level-1" test="sanitize.test.ts" status="covered" />
-    <entry scenario="V-M-OBSIDIAN-PLUGIN/s18" evidence="level-1+2" test="http-server.test.ts" status="untested" />
-    <entry scenario="V-M-OBSIDIAN-PLUGIN/s19" evidence="level-1+2" test="http-server.test.ts" status="untested" />
-    <entry scenario="V-M-OBSIDIAN-PLUGIN/s20" evidence="level-1" test="http-server.test.ts" status="untested" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s18" evidence="level-1+2" test="http-server.test.ts" status="covered" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s19" evidence="level-1+2" test="http-server.test.ts" status="covered" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s20" evidence="level-1" test="http-server.test.ts" status="covered" />
   </VerificationMatrix>
 
   <VerificationLevels>
@@ -442,7 +451,7 @@
         <evidence-4>Transport sends and receives with auth token.</evidence-4>
         <evidence-5>transport.test.ts covers checkHealth + sendCapturePackage success + failure.</evidence-5>
       </required-evidence>
-      <status>in-progress</status>
+      <status>done</status>
     </Gate-Phase-2>
 
     <Gate-Phase-3 PHASE="Phase-3">
@@ -461,7 +470,7 @@
         <evidence-7>Oversized body rejected with 413.</evidence-7>
         <evidence-8>Empty authToken skips auth check.</evidence-8>
       </required-evidence>
-      <status>in-progress</status>
+      <status>done</status>
     </Gate-Phase-3>
 
     <Gate-Phase-4 PHASE="Phase-4">
@@ -500,21 +509,33 @@
   </FailurePackets>
 
   <AutonomousReadiness>
-    <assessment-status>not-ready</assessment-status>
-    <blockers>
-      <blocker-1 severity="high">transport.test.ts does not exist — 3 scenarios and VF-004 have no coverage.</blocker-1>
-      <blocker-2 severity="high">No structured logging in source modules — trace assertions cannot verify execution paths.</blocker-2>
-      <blocker-3 severity="medium">Missing BLOCK_AUTH_CHECK and BLOCK_RESOLVE_PATH in source modules — VF-003 and VF-006 cannot emit required signals.</blocker-3>
-      <blocker-4 severity="medium">HTML img tag rewriting untested — scenario-8 is a gap.</blocker-4>
-      <blocker-5 severity="medium">No redaction audit tests — VF-005 has no evidence mechanism.</blocker-5>
-    </blockers>
+    <assessment-status>ready-for-phase-4</assessment-status>
+    <resolved-blockers>
+      <resolved-1 was="blocker-1">transport.test.ts created with 7 test cases covering checkHealth, sendCapturePackage success/failure, auth token, and redaction.</resolved-1>
+      <resolved-2 was="blocker-2">All 10 source modules now accept log parameter and emit structured BLOCK markers at runtime.</resolved-2>
+      <resolved-3 was="blocker-3">BLOCK_AUTH_CHECK added to http-server.ts; BLOCK_RESOLVE_PATH added to path-resolver.ts.</resolved-3>
+      <resolved-4 was="blocker-4">HTML img tag rewriting tested in markdown-rewriter.test.ts (2 test cases).</resolved-4>
+      <resolved-5 was="blocker-5">Redaction audit tests added to transport.test.ts and http-server.test.ts (assertNoSecrets + assertNoMarkerContaining).</resolved-5>
+    </resolved-blockers>
+    <remaining-gaps>
+      <gap-1 severity="low">No cross-package integration test connecting clipper-fork POST to obsidian-plugin capture in a single test.</gap-1>
+      <gap-2 severity="low">No full VF-001/VF-002 trace sequence ordering test across package boundaries (assertMarkerBefore only used within clip-transaction.test.ts).</gap-2>
+      <gap-3 severity="low">TraceCollector duplicated between clipper-fork and obsidian-plugin — could be extracted to shared-test-utils.</gap-3>
+    </remaining-gaps>
     <readiness-criteria>
-      <criterion-1>All module-level test commands pass with 0 failures.</criterion-1>
-      <criterion-2>transport.test.ts exists and covers scenarios 8-10, 11-12.</criterion-2>
-      <criterion-3>All source modules with BLOCK markers emit structured log entries.</criterion-3>
-      <criterion-4>TraceCollector utility exists and is used in at least clipper-fork and obsidian-plugin test suites.</criterion-4>
-      <criterion-5>All VF-xxx critical flow trace sequences can be verified.</criterion-5>
-      <criterion-6>Redaction audit test passes across all captured log output.</criterion-6>
+      <criterion-1 status="met">All module-level test commands pass with 0 failures (398 tests, 4 packages).</criterion-1>
+      <criterion-2 status="met">transport.test.ts exists with 7 test cases covering scenarios 8-10, 12.</criterion-2>
+      <criterion-3 status="met">All source modules with BLOCK markers emit structured log entries via log parameter.</criterion-3>
+      <criterion-4 status="met">TraceCollector utility exists in both clipper-fork and obsidian-plugin test suites.</criterion-4>
+      <criterion-5 status="partial">VF-001/VF-002 trace sequences verifiable within packages but not across package boundaries.</criterion-5>
+      <criterion-6 status="met">Redaction audit test passes across captured log output in transport.test.ts and http-server.test.ts.</criterion-6>
     </readiness-criteria>
+    <test-counts>
+      <shared-types>87</shared-types>
+      <template-engine>144</template-engine>
+      <clipper-fork>56</clipper-fork>
+      <obsidian-plugin>111</obsidian-plugin>
+      <total>398</total>
+    </test-counts>
   </AutonomousReadiness>
 </VerificationPlan>

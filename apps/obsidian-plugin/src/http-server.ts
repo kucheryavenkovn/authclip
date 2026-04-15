@@ -32,17 +32,21 @@ function readBody(req: IncomingMessage, maxBytes: number): Promise<string> {
   return new Promise((resolve, reject) => {
     let data = "";
     let bytesReceived = 0;
+    let rejected = false;
     req.setEncoding("utf8");
     req.on("data", (chunk: string) => {
+      if (rejected) return;
       bytesReceived += chunk.length;
       if (bytesReceived > maxBytes) {
+        rejected = true;
         reject(new Error("PAYLOAD_TOO_LARGE"));
-        req.destroy();
         return;
       }
       data += chunk;
     });
-    req.on("end", () => resolve(data));
+    req.on("end", () => {
+      if (!rejected) resolve(data);
+    });
     req.on("error", reject);
   });
 }

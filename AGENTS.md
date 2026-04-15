@@ -6,6 +6,27 @@ obsidian, web-clipper, browser-extension, asset-discovery, markdown-rewrite, loc
 ## Annotation
 Auth-aware Obsidian Web Clipper fork + companion plugin that saves images/attachments from authenticated pages as local vault files
 
+## Project Layout
+
+```
+D:\git\obsidian\
+├── apps/
+│   ├── clipper-fork/         # Browser extension (fork of obsidian-clipper with auth, asset discovery, attachment writing)
+│   └── obsidian-plugin/      # Obsidian plugin (local vault HTTP server, markdown rewriting, attachment writer)
+├── _reference/
+│   └── obsidian-clipper/     # Upstream Obsidian Web Clipper v1.4.0 — READ-ONLY reference, fully GRACE-annotated
+│       └── docs/grace/       # Reference project's GRACE XML artifacts
+├── docs/                     # Main project GRACE artifacts (requirements, technology, plans, graph)
+├── AGENTS.md                 # This file — engineering protocol
+└── kilo.json                 # Kilo CLI config
+```
+
+### _reference/obsidian-clipper/
+This is an **unmodified upstream copy** of the Obsidian Web Clipper (v1.4.0), annotated with GRACE markup for agent navigation. It is **not** built or published. Its purpose is to serve as a stable reference for understanding the template engine, filter library, and extension architecture that `apps/clipper-fork/` and `apps/obsidian-plugin/` build upon.
+
+- Do NOT modify its runtime code — only GRACE comments (MODULE_CONTRACT, MODULE_MAP, START_BLOCK, etc.) should be added or updated.
+- When the fork diverges from upstream, consult `_reference/` to understand the original intent before making changes.
+
 ## Core Principles
 
 ### 1. Never Write Code Without a Contract

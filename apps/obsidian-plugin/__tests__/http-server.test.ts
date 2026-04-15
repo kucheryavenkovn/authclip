@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import http from "http";
 import { startHttpServer } from "../src/http-server";
 import type { ClipSettings } from "@authclip/shared-types";
 import { DEFAULT_SETTINGS } from "@authclip/shared-types";
@@ -228,5 +229,29 @@ describe("HTTP server with trace collection", () => {
     });
     trace.assertNoMarkerContaining("trace-secret");
     trace.assertNoSecrets();
+  });
+
+  it("rejects oversized body with 413 and emits no vault writes", async () => {
+    trace.reset();
+    const body = "x".repeat(51 * 1024 * 1024);
+    const res = await new Promise<number>((resolve, reject) => {
+      const req = http.request(
+        `http://127.0.0.1:${port}/v1/capture`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-AuthClip-Token": "trace-secret",
+            "Content-Length": Buffer.byteLength(body),
+          },
+        },
+        (res) => resolve(res.statusCode!)
+      );
+      req.on("error", () => resolve(0));
+      req.write(body);
+      req.end();
+    });
+    expect(res).toBe(413);
+    trace.assertNoMarker("ObsidianPlugin][writeAttachment][BLOCK_WRITE_FILE");
   });
 });

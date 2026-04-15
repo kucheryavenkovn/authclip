@@ -5,6 +5,7 @@ import {
   resolveAttachmentPath,
   joinPosix,
 } from "../src/path-resolver";
+import { TraceCollector } from "./trace-collector";
 
 describe("joinPosix", () => {
   it("joins segments with /", () => {
@@ -88,5 +89,21 @@ describe("resolveAttachmentPath", () => {
     const existing = new Set<string>();
     resolveAttachmentPath("dir", "file.png", existing);
     expect(existing.has("file.png")).toBe(false);
+  });
+
+  it("emits BLOCK_RESOLVE_PATH marker with name and resolved path", () => {
+    const trace = new TraceCollector();
+    const existing = new Set<string>();
+    resolveAttachmentPath("Clippings/_assets", "photo.jpg", existing, trace.log);
+    trace.assertMarker("ObsidianPlugin][resolveAttachmentPath][BLOCK_RESOLVE_PATH");
+    trace.assertMarkerContaining("name=photo.jpg");
+    trace.assertMarkerContaining("resolved=Clippings/_assets/photo.jpg");
+  });
+
+  it("emits BLOCK_RESOLVE_PATH with conflict-resolved name", () => {
+    const trace = new TraceCollector();
+    const existing = new Set(["photo.jpg"]);
+    resolveAttachmentPath("Clippings/_assets", "photo.jpg", existing, trace.log);
+    trace.assertMarkerContaining("name=photo-1.jpg");
   });
 });
