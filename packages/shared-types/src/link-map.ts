@@ -14,6 +14,6 @@
 // END_MODULE_MAP
 
 export interface LinkMapEntry {
-  path: string;
+  from: string;
   attachmentId: string;
 }
