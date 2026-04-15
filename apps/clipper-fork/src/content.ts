@@ -166,29 +166,40 @@ function collectImageUrls(article: Element, baseUrl: string): string[] {
 	const urls: string[] = [];
 	const seen = new Set<string>();
 
-	article.querySelectorAll("img[src]").forEach((img) => {
-		const src = img.getAttribute("src")?.trim();
-		if (src && !seen.has(src)) {
-			seen.add(src);
-			try {
-				urls.push(new URL(src, baseUrl).href);
-			} catch {}
+	function addUrl(raw: string): void {
+		if (!raw) return;
+		const trimmed = raw.trim();
+		if (!trimmed || trimmed.startsWith("data:") || trimmed.startsWith("blob:")) return;
+		try {
+			const resolved = new URL(trimmed, baseUrl).href;
+			if (!seen.has(resolved)) {
+				seen.add(resolved);
+				urls.push(resolved);
+			}
+		} catch {}
+	}
+
+	article.querySelectorAll("img").forEach((img) => {
+		addUrl(img.getAttribute("src") || "");
+		addUrl(img.getAttribute("data-src") || "");
+		addUrl(img.getAttribute("data-lazy-src") || "");
+		addUrl(img.getAttribute("data-original") || "");
+		addUrl(img.getAttribute("data-srcset") || "");
+
+		const srcset = img.getAttribute("srcset");
+		if (srcset) {
+			srcset.split(",").forEach((entry) => {
+				const parts = entry.trim().split(/\s+/);
+				if (parts[0]) addUrl(parts[0]);
+			});
 		}
 	});
 
-	article.querySelectorAll("img[srcset], picture source[srcset]").forEach((el) => {
-		const srcset = el.getAttribute("srcset") || "";
+	article.querySelectorAll("picture source[srcset]").forEach((source) => {
+		const srcset = source.getAttribute("srcset") || "";
 		srcset.split(",").forEach((entry) => {
 			const parts = entry.trim().split(/\s+/);
-			if (parts[0]) {
-				try {
-					const resolved = new URL(parts[0], baseUrl).href;
-					if (!seen.has(resolved)) {
-						seen.add(resolved);
-						urls.push(resolved);
-					}
-				} catch {}
-			}
+			if (parts[0]) addUrl(parts[0]);
 		});
 	});
 
@@ -241,8 +252,15 @@ chrome.runtime.onMessage.addListener((request: any, _sender, sendResponse) => {
 				console.log("[AuthClip:content] article element:", articleElement.tagName, articleElement.className, "content length:", content.length);
 
 				const hlHighlights = highlighter.getHighlights();
-				let markdown = htmlToMarkdown(content, document.URL);
-				console.log("[AuthClip:content] htmlToMarkdown result length:", markdown.length);
+
+				let markdown: string;
+				try {
+					markdown = createMarkdownContent(content, document.URL);
+					console.log("[AuthClip:content] createMarkdownContent result length:", markdown.length);
+				} catch (e) {
+					console.warn("[AuthClip:content] createMarkdownContent failed, falling back to htmlToMarkdown:", e);
+					markdown = htmlToMarkdown(content, document.URL);
+				}
 				console.log("[AuthClip:content] markdown preview:", markdown.substring(0, 500));
 
 				markdown = cleanMarkdownNoise(markdown);
@@ -401,19 +419,80 @@ chrome.runtime.onMessage.addListener((request: any, _sender, sendResponse) => {
 	return false;
 });
 
+const NAMED_ENTITIES: Record<string, string> = {
+	"nbsp": " ", "amp": "&", "lt": "<", "gt": ">", "quot": '"', "apos": "'",
+	"copy": "\u00A9", "reg": "\u00AE", "trade": "\u2122", "mdash": "\u2014",
+	"ndash": "\u2013", "laquo": "\u00AB", "raquo": "\u00BB", "hellip": "\u2026",
+	"bull": "\u2022", "middot": "\u00B7", "lsquo": "\u2018", "rsquo": "\u2019",
+	"ldquo": "\u201C", "rdquo": "\u201D", "para": "\u00B6", "sect": "\u00A7",
+	"deg": "\u00B0", "plusmn": "\u00B1", "times": "\u00D7", "divide": "\u00F7",
+	"euro": "\u20AC", "pound": "\u00A3", "yen": "\u00A5", "cent": "\u00A2",
+	"rarr": "\u2192", "larr": "\u2190", "uarr": "\u2191", "darr": "\u2193",
+};
+
+function decodeEntities(text: string): string {
+	return text
+		.replace(/&#(\d+);/g, (_, num) => {
+			const code = parseInt(num, 10);
+			return code > 0 && code <= 0x10FFFF ? String.fromCodePoint(code) : "";
+		})
+		.replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+			const code = parseInt(hex, 16);
+			return code > 0 && code <= 0x10FFFF ? String.fromCodePoint(code) : "";
+		})
+		.replace(/&([a-zA-Z]+);/g, (_, name) => NAMED_ENTITIES[name] ?? `&${name};`);
+}
+
+const STRIP_TAG_PAIRS = [
+	"svg", "path", "defs", "linearGradient", "stop", "g", "rect", "circle",
+	"line", "polygon", "polyline", "text", "tspan", "button", "iframe",
+	"object", "embed", "noscript", "template", "slot", "dialog", "portal",
+	"video", "audio", "source", "track", "canvas", "map", "area", "nav",
+	"header", "footer", "menu", "menuitem", "select", "form", "input",
+	"textarea",
+];
+
+const STRIP_TAG_PAIRS_REGEX = new RegExp(
+	`<(${STRIP_TAG_PAIRS.join("|")})\\b[^>]*>[\\s\\S]*?<\\/\\1>`,
+	"gi"
+);
+
+const STRIP_TAG_SELFCLOSE_REGEX = new RegExp(
+	`<(${STRIP_TAG_PAIRS.join("|")})\\b[^>]*\\/?>`,
+	"gi"
+);
+
 function cleanMarkdownNoise(md: string): string {
-	return md
-		.replace(/<(svg|path|defs|linearGradient|stop|g|rect|circle|line|polygon|polyline|text|tspan)[^>]*>[\s\S]*?<\/\1>/gi, "")
-		.replace(/<button[^>]*>[\s\S]*?<\/button>/gi, "")
-		.replace(/<(app-|mat-)[a-z-]+[^>]*>[\s\S]*?<\/(app-|mat-)[a-z-]+>/gi, "")
-		.replace(/<(svg|path|defs|linearGradient|stop|g|rect|circle|line|polygon|polyline|text|tspan|button)\b[^>]*\/>/gi, "")
-		.replace(/<svg[^>]*>[\s\S]*?<\/svg>/gi, "")
-		.replace(/<button[^>]*>[\s\S]*?<\/button>/gi, "")
-		.replace(/<span[^>]*>\s*<\/span>/gi, "")
-		.replace(/&nbsp;/g, " ")
-		.replace(/&(amp|lt|gt|quot);/g, (m) => ({ "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"' })[m] || m)
+	let result = md;
+
+	result = result.replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, "");
+	result = result.replace(STRIP_TAG_PAIRS_REGEX, "");
+	result = result.replace(STRIP_TAG_SELFCLOSE_REGEX, "");
+	result = result.replace(/<(app-|mat-)[a-z-]+[^>]*>[\s\S]*?<\/(app-|mat-)[a-z-]+>/gi, "");
+	result = result.replace(/<(app-|mat-)[a-z-]+[^>]*\/>/gi, "");
+
+	result = result.replace(/<(aside)[^>]*>[\s\S]*?<\/\1>/gi, (match, _tag, offset) => {
+		const inner = match.replace(/^<[^>]+>|<\/[^>]+>$/g, "");
+		return inner.replace(/^(.+)/gm, "> $1");
+	});
+
+	result = result.replace(/<span[^>]*>\s*<\/span>/gi, "");
+	result = result.replace(/<div[^>]*>\s*<\/div>/gi, "");
+	result = result.replace(/<p[^>]*>\s*<\/p>/gi, "");
+
+	result = result.replace(/<[^>]+>/g, (tag) => {
+		if (/^<\/?(h[1-6]|p|br|hr|ul|ol|li|blockquote|pre|code|em|i|strong|b|a|img|table|thead|tbody|tr|th|td|figure|figcaption|mark|del|s|u|sub|sup|details|summary|dl|dt|dd)\b/i.test(tag)) return tag;
+		return "";
+	});
+
+	result = decodeEntities(result);
+
+	result = result
 		.replace(/\n{3,}/g, "\n\n")
+		.replace(/[ \t]+$/gm, "")
 		.trim();
+
+	return result;
 }
 
 function getTextFallback(html: string): string {

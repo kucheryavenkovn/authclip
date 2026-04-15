@@ -25,8 +25,8 @@ export interface RewriteResult {
   rewriteErrors: Array<{ url: string; reason: string }>;
 }
 
-const IMAGE_MD_PATTERN = /!\[([^\]]*)\]\(([^)]+)\)/g;
-const IMAGE_HTML_PATTERN = /<img[^>]+src=["']([^"']+)["'][^>]*(?:alt=["']([^"']*)["'])?[^>]*>/gi;
+const IMAGE_MD_PATTERN = /!\[([^\]]*)\]\(((?:[^)(]|\([^)(]*\))*)\)/g;
+const IMAGE_HTML_PATTERN = /<img[^>]+src=["']([^"']+)["'][^>]*(?:\balt=["']([^"']*)["'])?[^>]*>/gi;
 
 // START_CONTRACT: rewriteMarkdown
 //   PURPOSE: Replace external image URLs in markdown with local wikilinks or relative paths
@@ -49,7 +49,7 @@ export function rewriteMarkdown(
   for (const entry of linkMap) {
     const status = attachmentResults.get(entry.attachmentId);
     if (status) {
-      urlToStatus.set(entry.from, status);
+      urlToStatus.set(normalizeUrl(entry.from), status);
     }
   }
 
@@ -57,7 +57,7 @@ export function rewriteMarkdown(
 
   let result = markdown.replace(IMAGE_MD_PATTERN, (fullMatch, altText, url) => {
     const trimmedUrl = url.trim();
-    const status = urlToStatus.get(trimmedUrl);
+    const status = urlToStatus.get(normalizeUrl(trimmedUrl));
     if (!status) return fullMatch;
 
     if (status.status === "saved" || status.status === "deduplicated") {
@@ -74,7 +74,7 @@ export function rewriteMarkdown(
 
   result = result.replace(IMAGE_HTML_PATTERN, (fullMatch, src, alt) => {
     const trimmedSrc = src.trim();
-    const status = urlToStatus.get(trimmedSrc);
+    const status = urlToStatus.get(normalizeUrl(trimmedSrc));
     if (!status) return "";
 
     if (status.status === "saved" || status.status === "deduplicated") {
@@ -132,4 +132,21 @@ function computeRelativePath(fromDir: string, toPath: string): string {
   const ups = upCount > 0 ? "../".repeat(upCount) : "./";
 
   return `${ups}${remaining.join("/")}`;
+}
+
+function normalizeUrl(url: string): string {
+	let cleaned = url.trim();
+
+	cleaned = cleaned.replace(/\\([()[\]#*_'!])/g, "$1");
+
+	try {
+		const parsed = new URL(cleaned);
+		let pathname = parsed.pathname;
+		try { pathname = decodeURIComponent(pathname); } catch {}
+		pathname = pathname.replace(/\/+/g, "/");
+		const normalized = `${parsed.protocol}//${parsed.host}${pathname}`;
+		return parsed.search ? normalized + parsed.search : normalized;
+	} catch {
+		return cleaned;
+	}
 }
