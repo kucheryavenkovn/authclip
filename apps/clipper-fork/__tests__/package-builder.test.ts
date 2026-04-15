@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { buildCapturePackage } from "../src/package-builder";
 import type { AttachmentPayload } from "@authclip/shared-types";
 import { CapturePackageSchema } from "@authclip/shared-types";
+import { TraceCollector } from "./trace-collector";
 
 const FIXED_NOW = new Date("2026-04-14T12:00:00.000Z");
 
@@ -169,5 +170,16 @@ describe("buildCapturePackage", () => {
     });
     const result = CapturePackageSchema.safeParse(pkg);
     expect(result.success).toBe(true);
+  });
+
+  it("emits BLOCK_BUILD_PACKAGE marker", () => {
+    const trace = new TraceCollector();
+    buildCapturePackage({
+      source: { url: "https://example.com/a", title: "T" },
+      markdown: "text",
+      attachments: [makePayload()],
+    }, trace.log);
+    trace.assertMarker("ClipperFork][buildCapturePackage][BLOCK_BUILD_PACKAGE");
+    trace.assertMarkerContaining("attachments=1");
   });
 });

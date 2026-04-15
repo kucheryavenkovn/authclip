@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { discoverAssets, parseSrcset, resetIdCounter } from "../src/asset-discovery";
+import { TraceCollector } from "./trace-collector";
 
 const BASE = "https://example.com/article/123";
 
@@ -159,5 +160,20 @@ describe("discoverAssets", () => {
     const assets = discoverAssets(root, BASE);
     expect(assets).toHaveLength(1);
     expect(assets[0].url).toContain("inside.jpg");
+  });
+
+  it("emits BLOCK_DISCOVER_ASSETS log marker", () => {
+    const trace = new TraceCollector();
+    const doc = makeDoc(`<img src="a.jpg"><img src="b.jpg">`);
+    discoverAssets(doc.body, BASE, trace.log);
+    trace.assertMarker("ClipperFork][discoverAssets][BLOCK_DISCOVER_ASSETS");
+    trace.assertMarkerContaining("discovered 2 assets");
+  });
+
+  it("reports 0 assets in marker when no images found", () => {
+    const trace = new TraceCollector();
+    const doc = makeDoc(`<p>text</p>`);
+    discoverAssets(doc.body, BASE, trace.log);
+    trace.assertMarkerContaining("discovered 0 assets");
   });
 });

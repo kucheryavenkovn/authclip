@@ -41,7 +41,8 @@ export function rewriteMarkdown(
   attachmentResults: Map<string, AttachmentStatus>,
   rewriteMode: RewriteMode,
   attachmentDir: string,
-  notePath: string
+  notePath: string,
+  log?: (msg: string) => void
 ): RewriteResult {
   // START_BLOCK_REWRITE_LINKS
   const urlToStatus = new Map<string, AttachmentStatus>();
@@ -88,6 +89,7 @@ export function rewriteMarkdown(
     return "";
   });
 
+  log?.(`[ObsidianPlugin][rewriteMarkdown][BLOCK_REWRITE_LINKS] errors=${rewriteErrors.length} mode=${rewriteMode}`);
   return { markdown: result, rewriteErrors };
   // END_BLOCK_REWRITE_LINKS
 }

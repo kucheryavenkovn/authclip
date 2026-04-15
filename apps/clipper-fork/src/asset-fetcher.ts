@@ -163,7 +163,8 @@ async function fetchSingle(
 // END_CONTRACT: fetchAssets
 export async function fetchAssets(
   assets: DiscoveredAsset[],
-  options?: FetchOptions
+  options?: FetchOptions,
+  log?: (msg: string) => void
 ): Promise<FetchResult> {
   // START_BLOCK_FETCH_ASSET
   const selected = assets.filter((a) => a.selected);
@@ -184,8 +185,10 @@ export async function fetchAssets(
       const result = await fetchSingle(current, timeoutMs, maxBytes);
       if ("payload" in result) {
         attachments.push(result.payload);
+        log?.(`[ClipperFork][fetchAssets][BLOCK_FETCH_ASSET] fetched assetId=${current.id}`);
       } else {
         failures.push(result.failure);
+        log?.(`[ClipperFork][fetchAssets][BLOCK_FETCH_ASSET] ${result.failure.code} assetId=${current.id}`);
       }
     }
   }
@@ -193,6 +196,7 @@ export async function fetchAssets(
   const workers = Array.from({ length: Math.min(concurrency, selected.length) }, () => worker());
   await Promise.all(workers);
 
+  log?.(`[ClipperFork][fetchAssets][BLOCK_FETCH_ASSET] completed fetched=${attachments.length} failed=${failures.length}`);
   return { attachments, failures };
   // END_BLOCK_FETCH_ASSET
 }

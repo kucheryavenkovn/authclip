@@ -32,9 +32,10 @@ const SUPPORTED_MAJOR = 1;
 //   SIDE_EFFECTS: none
 //   LINKS: M-SHARED-TYPES, M-OBSIDIAN-PLUGIN
 // END_CONTRACT: validateCapturePackage
-export function validateCapturePackage(raw: unknown): ValidationResult {
+export function validateCapturePackage(raw: unknown, log?: (msg: string) => void): ValidationResult {
   // START_BLOCK_VALIDATE
   if (!raw || typeof raw !== "object") {
+    log?.(`[ObsidianPlugin][validateCapturePackage][BLOCK_VALIDATE] MANIFEST_INVALID: non-null object expected`);
     return {
       valid: false,
       pkg: null,
@@ -47,6 +48,7 @@ export function validateCapturePackage(raw: unknown): ValidationResult {
     const [majorStr] = version.split(".");
     const major = Number(majorStr);
     if (!isNaN(major) && major !== SUPPORTED_MAJOR) {
+      log?.(`[ObsidianPlugin][validateCapturePackage][BLOCK_VALIDATE] MANIFEST_VERSION_MISMATCH: major=${major} supported=${SUPPORTED_MAJOR}`);
       return {
         valid: false,
         pkg: null,
@@ -61,6 +63,7 @@ export function validateCapturePackage(raw: unknown): ValidationResult {
     const firstIssue = parseResult.error.issues[0];
     const path = firstIssue?.path.join(".") ?? "root";
     const message = firstIssue?.message ?? "Unknown validation error";
+    log?.(`[ObsidianPlugin][validateCapturePackage][BLOCK_VALIDATE] MANIFEST_INVALID: ${path} — ${message}`);
     return {
       valid: false,
       pkg: null,
@@ -68,6 +71,7 @@ export function validateCapturePackage(raw: unknown): ValidationResult {
     };
   }
 
+  log?.(`[ObsidianPlugin][validateCapturePackage][BLOCK_VALIDATE] valid version=${parseResult.data.version}`);
   return { valid: true, pkg: parseResult.data, errorMessage: null };
   // END_BLOCK_VALIDATE
 }

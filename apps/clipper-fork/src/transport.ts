@@ -42,7 +42,7 @@ export class TransportError extends Error {
 //   SIDE_EFFECTS: Network request
 //   LINKS: M-CLIPPER-FORK
 // END_CONTRACT: checkHealth
-export async function checkHealth(options: TransportOptions): Promise<boolean> {
+export async function checkHealth(options: TransportOptions, log?: (msg: string) => void): Promise<boolean> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 5000);
@@ -50,8 +50,11 @@ export async function checkHealth(options: TransportOptions): Promise<boolean> {
       signal: controller.signal,
     });
     clearTimeout(timer);
-    return resp.ok;
+    const ok = resp.ok;
+    log?.(`[ClipperFork][checkHealth][BLOCK_TRANSPORT] health=${ok} port=${options.port}`);
+    return ok;
   } catch {
+    log?.(`[ClipperFork][checkHealth][BLOCK_TRANSPORT] health=false port=${options.port}`);
     return false;
   }
 }
@@ -65,7 +68,8 @@ export async function checkHealth(options: TransportOptions): Promise<boolean> {
 // END_CONTRACT: sendCapturePackage
 export async function sendCapturePackage(
   pkg: unknown,
-  options: TransportOptions
+  options: TransportOptions,
+  log?: (msg: string) => void
 ): Promise<ResultReport> {
   // START_BLOCK_TRANSPORT
   const controller = new AbortController();
@@ -78,6 +82,8 @@ export async function sendCapturePackage(
     if (options.authToken) {
       headers["X-AuthClip-Token"] = options.authToken;
     }
+
+    log?.(`[ClipperFork][sendCapturePackage][BLOCK_TRANSPORT] sending to port=${options.port} hasAuth=${!!options.authToken}`);
 
     const resp = await fetch(`http://127.0.0.1:${options.port}/v1/capture`, {
       method: "POST",
@@ -93,17 +99,21 @@ export async function sendCapturePackage(
     if (!resp.ok) {
       const errorReport = body as ResultReport;
       const firstError = errorReport.errors?.[0];
+      const code = firstError?.code ?? "PLUGIN_UNAVAILABLE";
+      log?.(`[ClipperFork][sendCapturePackage][BLOCK_TRANSPORT] HTTP ${resp.status} code=${code}`);
       throw new TransportError(
         firstError?.message ?? `HTTP ${resp.status}`,
-        firstError?.code ?? "PLUGIN_UNAVAILABLE",
+        code,
         resp.status
       );
     }
 
+    log?.(`[ClipperFork][sendCapturePackage][BLOCK_TRANSPORT] success status=${(body as ResultReport).status}`);
     return body as ResultReport;
   } catch (err) {
     clearTimeout(timer);
     if (err instanceof TransportError) throw err;
+    log?.(`[ClipperFork][sendCapturePackage][BLOCK_TRANSPORT] PLUGIN_UNAVAILABLE`);
     throw new TransportError(
       err instanceof Error ? err.message : "Unknown transport error",
       "PLUGIN_UNAVAILABLE"

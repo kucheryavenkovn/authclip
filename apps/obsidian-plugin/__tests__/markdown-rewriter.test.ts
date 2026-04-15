@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { rewriteMarkdown } from "../src/markdown-rewriter";
 import type { LinkMapEntry, AttachmentStatus } from "@authclip/shared-types";
+import { TraceCollector } from "./trace-collector";
 
 describe("rewriteMarkdown", () => {
   it("rewrites saved attachment to wikilink", () => {
@@ -318,5 +319,47 @@ describe("rewriteMarkdown", () => {
     );
 
     expect(result).toContain("existing.jpg");
+  });
+
+  it("rewrites HTML img tags to wikilinks", () => {
+    const markdown = '<img src="https://example.com/html-img.jpg" alt="Photo">';
+    const linkMap: LinkMapEntry[] = [
+      { from: "https://example.com/html-img.jpg", attachmentId: "att_html" },
+    ];
+    const results = new Map<string, AttachmentStatus>([
+      ["att_html", { id: "att_html", status: "saved", vaultPath: "assets/html-img.jpg" }],
+    ]);
+
+    const { markdown: result, rewriteErrors } = rewriteMarkdown(
+      markdown, linkMap, results, "wikilink", "assets", "note.md"
+    );
+
+    expect(result).toBe("![[html-img.jpg]]");
+    expect(rewriteErrors).toHaveLength(0);
+  });
+
+  it("removes HTML img tags for failed attachments", () => {
+    const markdown = '<img src="https://example.com/fail.jpg" alt="Fail">';
+    const linkMap: LinkMapEntry[] = [
+      { from: "https://example.com/fail.jpg", attachmentId: "att_fail" },
+    ];
+    const results = new Map<string, AttachmentStatus>([
+      ["att_fail", { id: "att_fail", status: "failed", code: "FETCH_FAILED", message: "timeout" }],
+    ]);
+
+    const { markdown: result, rewriteErrors } = rewriteMarkdown(
+      markdown, linkMap, results, "wikilink", "assets", "note.md"
+    );
+
+    expect(result).toBe("");
+    expect(rewriteErrors).toHaveLength(1);
+  });
+
+  it("emits BLOCK_REWRITE_LINKS marker", () => {
+    const trace = new TraceCollector();
+    rewriteMarkdown(
+      "text", [], new Map(), "wikilink", "assets", "note.md", trace.log
+    );
+    trace.assertMarker("ObsidianPlugin][rewriteMarkdown][BLOCK_REWRITE_LINKS");
   });
 });

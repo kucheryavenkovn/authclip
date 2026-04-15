@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { writeAttachment } from "../src/attachment-writer";
 import type { AttachmentPayload } from "@authclip/shared-types";
 import type { VaultAdapter } from "../src/vault-adapter";
+import { TraceCollector } from "./trace-collector";
 
 function makeAttachment(overrides?: Partial<AttachmentPayload>): AttachmentPayload {
   return {
@@ -82,5 +83,24 @@ describe("writeAttachment", () => {
 
     const written = files.get("out/test.bin") as Uint8Array;
     expect(new TextDecoder().decode(written)).toBe("hello world");
+  });
+
+  it("emits BLOCK_WRITE_FILE marker on success", async () => {
+    const trace = new TraceCollector();
+    await writeAttachment(makeAttachment(), "out/img.jpg", makeVault(), trace.log);
+    trace.assertMarker("ObsidianPlugin][writeAttachment][BLOCK_WRITE_FILE");
+    trace.assertMarkerContaining("saved");
+  });
+
+  it("emits BLOCK_WRITE_FILE marker with WRITE_FAILED on error", async () => {
+    const trace = new TraceCollector();
+    const vault: VaultAdapter = {
+      ...makeVault(),
+      async writeBinary() {
+        throw new Error("Disk full");
+      },
+    };
+    await writeAttachment(makeAttachment(), "out/img.jpg", vault, trace.log);
+    trace.assertMarkerContaining("WRITE_FAILED");
   });
 });

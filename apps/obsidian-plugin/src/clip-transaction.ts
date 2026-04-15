@@ -1,10 +1,21 @@
+// FILE: apps/obsidian-plugin/src/clip-transaction.ts
+// VERSION: 0.3.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Orchestrate full clip transaction: validate, write attachments, rewrite markdown, create note
+//   SCOPE: Path resolution, attachment iteration, markdown rewriting, note creation, ResultReport generation
+//   DEPENDS: M-SHARED-TYPES, M-OBSIDIAN-PLUGIN (attachment-writer, markdown-rewriter, path-resolver, vault-adapter)
+//   LINKS: M-OBSIDIAN-PLUGIN
+//   ROLE: RUNTIME
+//   MAP_MODE: EXPORTS
+// END_MODULE_CONTRACT
+//
 // START_MODULE_MAP
 //   ClipTransactionInput - Transaction input: pkg, settings, vault
 //   executeClipTransaction - Full clip orchestration producing ResultReport
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - Initial GRACE markup added to existing implementation
+//   LAST_CHANGE: v0.3.0 - Added optional log parameter for traceability
 // END_CHANGE_SUMMARY
 
 import type {
@@ -27,6 +38,7 @@ export interface ClipTransactionInput {
   pkg: CapturePackage;
   settings: ClipSettings;
   vault: VaultAdapter;
+  log?: (msg: string) => void;
 }
 
 // START_CONTRACT: executeClipTransaction
@@ -40,8 +52,11 @@ export async function executeClipTransaction(
   input: ClipTransactionInput
 ): Promise<ResultReport> {
   // START_BLOCK_RECEIVE
-  const { pkg, settings, vault } = input;
+  const { pkg, settings, vault, log } = input;
+  const logger = log ?? (() => {});
   const errors: ResultReport["errors"] = [];
+
+  log?.(`[ObsidianPlugin][executeClipTransaction][BLOCK_RECEIVE] starting transaction`);
 
   const notePath = resolveNotePath(pkg.note.pathHint, settings.defaultNoteFolder);
   const attachDir = resolveAttachmentDir(
@@ -65,10 +80,10 @@ export async function executeClipTransaction(
       continue;
     }
 
-    const destPath = resolveAttachmentPath(attachDir, attachment.suggestedName, usedNames);
+    const destPath = resolveAttachmentPath(attachDir, attachment.suggestedName, usedNames, logger);
     usedNames.add(destPath.slice(destPath.lastIndexOf("/") + 1));
 
-    const result = await writeAttachment(attachment, destPath, vault);
+    const result = await writeAttachment(attachment, destPath, vault, logger);
     attachmentResults.set(attachment.id, result.status);
 
     if (result.status.status === "failed") {
@@ -85,7 +100,8 @@ export async function executeClipTransaction(
     attachmentResults,
     settings.rewriteMode,
     attachDir,
-    notePath
+    notePath,
+    logger
   );
 
   for (const re of rewriteErrors) {
@@ -102,7 +118,9 @@ export async function executeClipTransaction(
     await vault.ensureDir(dirName(notePath));
     await vault.writeText(notePath, finalMarkdown);
     noteSaved = true;
+    logger(`[ObsidianPlugin][executeClipTransaction][BLOCK_CREATE_NOTE] note saved path=${notePath}`);
   } catch (err) {
+    logger(`[ObsidianPlugin][executeClipTransaction][BLOCK_CREATE_NOTE] WRITE_FAILED path=${notePath}`);
     errors.push({
       code: "WRITE_FAILED",
       message: `Failed to write note: ${err instanceof Error ? err.message : "Unknown"}`,

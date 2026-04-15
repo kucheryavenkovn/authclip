@@ -32,18 +32,21 @@ export interface AttachmentWriteResult {
 export async function writeAttachment(
   attachment: AttachmentPayload,
   destPath: string,
-  vault: VaultAdapter
+  vault: VaultAdapter,
+  log?: (msg: string) => void
 ): Promise<AttachmentWriteResult> {
   // START_BLOCK_WRITE_FILE
   try {
     const bytes = decodeBase64(attachment.dataBase64);
     await vault.ensureDir(dirName(destPath));
     await vault.writeBinary(destPath, bytes);
+    log?.(`[ObsidianPlugin][writeAttachment][BLOCK_WRITE_FILE] saved id=${attachment.id} path=${destPath}`);
     return {
       status: { id: attachment.id, status: "saved", vaultPath: destPath },
       resolvedPath: destPath,
     };
   } catch (err) {
+    log?.(`[ObsidianPlugin][writeAttachment][BLOCK_WRITE_FILE] WRITE_FAILED id=${attachment.id}`);
     return {
       status: {
         id: attachment.id,

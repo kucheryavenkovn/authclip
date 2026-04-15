@@ -1,4 +1,4 @@
-<VerificationPlan VERSION="0.3.0">
+<VerificationPlan VERSION="0.4.0">
   <GlobalPolicy>
     <log-format>[Module][function][BLOCK_NAME] message</log-format>
     <deterministic-first>true</deterministic-first>
@@ -6,7 +6,34 @@
     <wave-level-focus>Cross-package integration surfaces touched by the current wave</wave-level-focus>
     <phase-level-focus>Full monorepo regression via pnpm test</phase-level-focus>
     <redaction>Never log secrets, credentials, cookies, auth headers, session tokens, or raw high-risk payloads. Redact query strings in URLs.</redaction>
+    <trace-collection>Tests inject a TraceCollector via the module's log parameter. The collector captures structured log entries keyed by [Module][function][BLOCK_NAME]. Assertions verify presence, absence, and order of block markers.</trace-collection>
+    <evidence-hierarchy>
+      <level-1>Deterministic value assertions (return values, state, types)</level-1>
+      <level-2>Trace assertions (block markers appeared, in correct order, forbidden blocks absent)</level-2>
+      <level-3>Integration checks (cross-module HTTP, end-to-end pipeline)</level-3>
+      <level-4>Semantic trace evaluation (only when domain correctness cannot be expressed with exact asserts)</level-4>
+    </evidence-hierarchy>
   </GlobalPolicy>
+
+  <ObservabilitySpec>
+    <logger-interface>
+      <purpose>Each module that needs traceability accepts an optional log callback: (msg: string) =&gt; void</purpose>
+      <format>[Module][function][BLOCK_NAME] message { structuredJsonFields }</format>
+      <required-structured-fields>At minimum: correlationId or assetId when available, and phase or resultStatus when applicable.</required-structured-fields>
+    </logger-interface>
+    <redaction-rules>
+      <rule-1>Never log X-AuthClip-Token values</rule-1>
+      <rule-2>Never log cookie headers</rule-2>
+      <rule-3>Never log Authorization headers</rule-4>
+      <rule-4>Redact query strings in logged URLs: replace ? and everything after with [REDACTED]</rule-4>
+      <rule-5>Never log base64 attachment data (only log metadata: id, mimeType, suggestedName, size estimate)</rule-5>
+    </redaction-rules>
+    <test-utility>
+      <name>TraceCollector</name>
+      <location>tests/trace-collector.ts (shared across packages)</location>
+      <purpose>Capture structured log entries during tests. Provide assertion helpers for block presence, absence, order, and field values.</purpose>
+    </test-utility>
+  </ObservabilitySpec>
 
   <CriticalFlows>
     <VF-001 NAME="FullClipHappyPath" USE_CASES="UC-001" DATA_FLOW="DF-CLIP_FULL" PRIORITY="high">
@@ -21,8 +48,16 @@
         <log-marker>[ObsidianPlugin][writeAttachment][BLOCK_WRITE_FILE]</log-marker>
         <log-marker>[ObsidianPlugin][rewriteMarkdown][BLOCK_REWRITE_LINKS]</log-marker>
         <log-marker>[ObsidianPlugin][executeClipTransaction][BLOCK_CREATE_NOTE]</log-marker>
-        <trace-sequence>BLOCK_DISCOVER_ASSETS -> BLOCK_FETCH_ASSET -> BLOCK_BUILD_PACKAGE -> BLOCK_TRANSPORT -> BLOCK_RECEIVE -> BLOCK_WRITE_FILE -> BLOCK_REWRITE_LINKS -> BLOCK_CREATE_NOTE -> RETURNED</trace-sequence>
+        <trace-sequence>BLOCK_DISCOVER_ASSETS -&gt; BLOCK_FETCH_ASSET -&gt; BLOCK_BUILD_PACKAGE -&gt; BLOCK_TRANSPORT -&gt; BLOCK_RECEIVE -&gt; BLOCK_WRITE_FILE -&gt; BLOCK_REWRITE_LINKS -&gt; BLOCK_CREATE_NOTE -&gt; RETURNED</trace-sequence>
       </required-signals>
+      <evidence-type>Level-1 (deterministic) + Level-2 (trace sequence)</evidence-type>
+      <test-files>
+        <file>apps/clipper-fork/__tests__/asset-discovery.test.ts</file>
+        <file>apps/clipper-fork/__tests__/asset-fetcher.test.ts</file>
+        <file>apps/clipper-fork/__tests__/package-builder.test.ts</file>
+        <file>apps/clipper-fork/__tests__/transport.test.ts</file>
+        <file>apps/obsidian-plugin/__tests__/clip-transaction.test.ts</file>
+      </test-files>
     </VF-001>
 
     <VF-002 NAME="PartialSuccess" USE_CASES="UC-003" DATA_FLOW="DF-CLIP_PARTIAL" PRIORITY="high">
@@ -30,8 +65,16 @@
       <expected-outcome>Note saved; frontmatter shows assets_saved=3, assets_failed=2; failed assets marked with HTML comment in markdown.</expected-outcome>
       <required-signals>
         <log-marker>[ClipperFork][fetchAssets][BLOCK_FETCH_ASSET] FETCH_FAILED</log-marker>
-        <trace-sequence>BLOCK_FETCH_ASSET -> (2x FETCH_FAILED) -> BLOCK_BUILD_PACKAGE -> BLOCK_RECEIVE -> BLOCK_WRITE_FILE -> BLOCK_REWRITE_LINKS -> BLOCK_CREATE_NOTE -> RETURNED</trace-sequence>
+        <log-marker>[ObsidianPlugin][executeClipTransaction][BLOCK_RECEIVE]</log-marker>
+        <log-marker>[ObsidianPlugin][executeClipTransaction][BLOCK_CREATE_NOTE]</log-marker>
+        <trace-sequence>BLOCK_FETCH_ASSET -&gt; (2x FETCH_FAILED) -&gt; BLOCK_BUILD_PACKAGE -&gt; BLOCK_RECEIVE -&gt; BLOCK_WRITE_FILE -&gt; BLOCK_REWRITE_LINKS -&gt; BLOCK_CREATE_NOTE -&gt; RETURNED</trace-sequence>
+        <forbidden-block>BLOCK_CREATE_NOTE must NOT be absent (note must still be created despite partial failures)</forbidden-block>
       </required-signals>
+      <evidence-type>Level-1 + Level-2</evidence-type>
+      <test-files>
+        <file>apps/clipper-fork/__tests__/asset-fetcher.test.ts</file>
+        <file>apps/obsidian-plugin/__tests__/clip-transaction.test.ts</file>
+      </test-files>
     </VF-002>
 
     <VF-003 NAME="NameConflictResolution" USE_CASES="UC-005" DATA_FLOW="DF-DEDUP" PRIORITY="medium">
@@ -39,7 +82,14 @@
       <expected-outcome>generateSafeName appends counter suffix; no overwrite; note links to new name.</expected-outcome>
       <required-signals>
         <log-marker>[ObsidianPlugin][resolveAttachmentPath][BLOCK_RESOLVE_PATH]</log-marker>
+        <log-marker>[ObsidianPlugin][writeAttachment][BLOCK_WRITE_FILE]</log-marker>
       </required-signals>
+      <evidence-type>Level-1 (deterministic name generation)</evidence-type>
+      <test-files>
+        <file>packages/shared-types/__tests__/sanitize.test.ts</file>
+        <file>apps/obsidian-plugin/__tests__/path-resolver.test.ts</file>
+        <file>apps/obsidian-plugin/__tests__/clip-transaction.test.ts</file>
+      </test-files>
     </VF-003>
 
     <VF-004 NAME="PluginUnavailable" USE_CASES="UC-006" DATA_FLOW="DF-PLUGIN_UNAVAILABLE" PRIORITY="high">
@@ -48,14 +98,23 @@
       <required-signals>
         <log-marker>[ClipperFork][sendCapturePackage][BLOCK_TRANSPORT] PLUGIN_UNAVAILABLE</log-marker>
       </required-signals>
+      <evidence-type>Level-1 (error type and code) + Level-2 (block marker)</evidence-type>
+      <test-files>
+        <file>apps/clipper-fork/__tests__/transport.test.ts</file>
+      </test-files>
     </VF-004>
 
     <VF-005 NAME="TokenRedaction" USE_CASES="UC-001" DATA_FLOW="DF-CLIP_FULL" PRIORITY="high">
       <scenario>Clip a page with sensitive query params and auth cookies.</scenario>
       <expected-outcome>No tokens, cookies, or auth headers appear in any log output or frontmatter.</expected-outcome>
       <required-signals>
-        <assertion>All log outputs pass redaction check — no auth headers, cookies, or tokens.</assertion>
+        <assertion>All log outputs pass redaction check — no auth headers, cookies, tokens, or base64 data.</assertion>
       </required-signals>
+      <evidence-type>Level-2 (trace content inspection)</evidence-type>
+      <test-files>
+        <file>apps/clipper-fork/__tests__/transport.test.ts</file>
+        <file>apps/obsidian-plugin/__tests__/http-server.test.ts</file>
+      </test-files>
     </VF-005>
 
     <VF-006 NAME="AuthTokenRejection" USE_CASES="UC-007" DATA_FLOW="DF-CLIP_FULL" PRIORITY="medium">
@@ -63,7 +122,12 @@
       <expected-outcome>HTTP 401 with MANIFEST_INVALID error; no vault writes.</expected-outcome>
       <required-signals>
         <log-marker>[ObsidianPlugin][handleCapture][BLOCK_AUTH_CHECK]</log-marker>
+        <forbidden-block>BLOCK_WRITE_FILE must NOT appear in trace (no vault writes on auth failure)</forbidden-block>
       </required-signals>
+      <evidence-type>Level-1 (HTTP status) + Level-2 (no write blocks)</evidence-type>
+      <test-files>
+        <file>apps/obsidian-plugin/__tests__/http-server.test.ts</file>
+      </test-files>
     </VF-006>
 
     <VF-007 NAME="ManifestValidation" USE_CASES="UC-001" DATA_FLOW="DF-CLIP_FULL" PRIORITY="high">
@@ -71,28 +135,35 @@
       <expected-outcome>Rejected with MANIFEST_INVALID or MANIFEST_VERSION_MISMATCH; no vault writes.</expected-outcome>
       <required-signals>
         <log-marker>[ObsidianPlugin][validateCapturePackage][BLOCK_VALIDATE]</log-marker>
-        <assertion>MANIFEST_INVALID must not trigger any vault writes.</assertion>
+        <forbidden-block>BLOCK_WRITE_FILE must NOT appear (no vault writes on validation failure)</forbidden-block>
       </required-signals>
+      <evidence-type>Level-1 (validation result) + Level-2 (no write blocks)</evidence-type>
+      <test-files>
+        <file>apps/obsidian-plugin/__tests__/manifest-validator.test.ts</file>
+        <file>apps/obsidian-plugin/__tests__/http-server.test.ts</file>
+      </test-files>
     </VF-007>
   </CriticalFlows>
 
   <ModuleVerification>
     <V-M-SHARED-TYPES MODULE="M-SHARED-TYPES" PRIORITY="high">
       <test-files>
-        <file>packages/shared-types/src/__tests__/</file>
+        <file>packages/shared-types/__tests__/sanitize.test.ts</file>
+        <file>packages/shared-types/__tests__/capture-package.test.ts</file>
+        <file>packages/shared-types/__tests__/result-report.test.ts</file>
       </test-files>
       <module-checks>
         <check-1>pnpm --filter @authclip/shared-types test</check-1>
         <check-2>pnpm --filter @authclip/shared-types typecheck</check-2>
       </module-checks>
       <scenarios>
-        <scenario-1 kind="success">Valid CapturePackage passes CapturePackageSchema.safeParse.</scenario-1>
-        <scenario-2 kind="failure">Invalid CapturePackage rejected with descriptive Zod error.</scenario-2>
-        <scenario-3 kind="success">ResultReport serialization round-trips correctly.</scenario-3>
-        <scenario-4 kind="success">sanitizeFilename removes unsafe characters, handles edge cases.</scenario-4>
-        <scenario-5 kind="success">generateSafeName appends counter on conflict.</scenario-5>
-        <scenario-6 kind="success">extractFilenameFromUrl handles data:, blob:, query strings, encoded paths.</scenario-6>
-        <scenario-7 kind="success">buildResultStatus returns correct status for all combinations.</scenario-7>
+        <scenario-1 kind="success" evidence="level-1">Valid CapturePackage passes CapturePackageSchema.safeParse.</scenario-1>
+        <scenario-2 kind="failure" evidence="level-1">Invalid CapturePackage rejected with descriptive Zod error.</scenario-2>
+        <scenario-3 kind="success" evidence="level-1">ResultReport serialization round-trips correctly (parse -&gt; serialize -&gt; parse).</scenario-3>
+        <scenario-4 kind="success" evidence="level-1">sanitizeFilename removes unsafe characters, handles edge cases (path traversal, control chars, Unicode).</scenario-4>
+        <scenario-5 kind="success" evidence="level-1">generateSafeName appends counter on conflict.</scenario-5>
+        <scenario-6 kind="success" evidence="level-1">extractFilenameFromUrl handles data:, blob:, query strings, encoded paths.</scenario-6>
+        <scenario-7 kind="success" evidence="level-1">buildResultStatus returns correct status for all combinations (success, partial, failed).</scenario-7>
       </scenarios>
       <required-log-markers>
         <marker-1>[SharedTypes][validateCapturePackage][BLOCK_VALIDATE]</marker-1>
@@ -100,12 +171,16 @@
       <required-trace-assertions>
         <assertion-1>Validation failure must not emit downstream processing blocks.</assertion-1>
       </required-trace-assertions>
+      <coverage-assessment>All scenarios have value-assertion test coverage. Scenario-3 round-trip test could be strengthened. No trace assertions needed at this level (shared-types is a utility layer without side effects).</coverage-assessment>
       <wave-follow-up>Integration check against clipper-fork and obsidian-plugin consuming shared types.</wave-follow-up>
       <phase-follow-up>Full regression suite across all packages.</phase-follow-up>
     </V-M-SHARED-TYPES>
 
     <V-M-TEMPLATE-ENGINE MODULE="M-TEMPLATE-ENGINE" PRIORITY="medium">
       <test-files>
+        <file>packages/template-engine/__tests__/tokenizer.test.ts</file>
+        <file>packages/template-engine/__tests__/parser.test.ts</file>
+        <file>packages/template-engine/__tests__/renderer.test.ts</file>
         <file>packages/template-engine/src/filters/*.test.ts (co-located)</file>
       </test-files>
       <module-checks>
@@ -113,38 +188,44 @@
         <check-2>pnpm --filter @authclip/template-engine typecheck</check-2>
       </module-checks>
       <scenarios>
-        <scenario-1 kind="success">Template with variables and filters renders correctly.</scenario-1>
-        <scenario-2 kind="failure">Invalid template syntax produces parse error with line/column.</scenario-2>
-        <scenario-3 kind="success">All 50+ filters produce expected output.</scenario-3>
-        <scenario-4 kind="success">validateVariables detects unknown variables and suggests corrections.</scenario-4>
-        <scenario-5 kind="success">validateFilters detects unknown filters and suggests corrections.</scenario-5>
+        <scenario-1 kind="success" evidence="level-1">Template with variables and filters renders correctly.</scenario-1>
+        <scenario-2 kind="failure" evidence="level-1">Invalid template syntax produces parse error with line/column.</scenario-2>
+        <scenario-3 kind="success" evidence="level-1">All 50+ filters produce expected output.</scenario-3>
+        <scenario-4 kind="success" evidence="level-1">validateVariables detects unknown variables and suggests corrections.</scenario-4>
+        <scenario-5 kind="success" evidence="level-1">validateFilters detects unknown filters and suggests corrections.</scenario-5>
       </scenarios>
       <required-log-markers>
         <marker-1>[TemplateEngine][render][BLOCK_RENDER]</marker-1>
       </required-log-markers>
+      <coverage-assessment>Well-covered with co-located filter tests. Trace assertions not critical for this module.</coverage-assessment>
       <wave-follow-up>Check template rendering in clipper-fork note generation.</wave-follow-up>
       <phase-follow-up>Full regression suite.</phase-follow-up>
     </V-M-TEMPLATE-ENGINE>
 
     <V-M-CLIPPER-FORK MODULE="M-CLIPPER-FORK" PRIORITY="high">
       <test-files>
-        <file>apps/clipper-fork/src/__tests__/</file>
+        <file>apps/clipper-fork/__tests__/asset-discovery.test.ts</file>
+        <file>apps/clipper-fork/__tests__/asset-fetcher.test.ts</file>
+        <file>apps/clipper-fork/__tests__/package-builder.test.ts</file>
+        <file>apps/clipper-fork/__tests__/transport.test.ts</file>
       </test-files>
       <module-checks>
         <check-1>pnpm --filter @authclip/clipper-fork test</check-1>
         <check-2>pnpm --filter @authclip/clipper-fork typecheck</check-2>
       </module-checks>
       <scenarios>
-        <scenario-1 kind="success">discoverAssets finds img[src], img[srcset], picture source[srcset] elements.</scenario-1>
-        <scenario-2 kind="success">parseSrcset handles descriptors, multiple URLs, empty input.</scenario-2>
-        <scenario-3 kind="success">fetchAssets downloads image data as base64 with credentials: include.</scenario-3>
-        <scenario-4 kind="failure">fetchAssets on 403 returns FETCH_FORBIDDEN per asset.</scenario-4>
-        <scenario-5 kind="failure">fetchAssets timeout returns FETCH_TIMEOUT.</scenario-5>
-        <scenario-6 kind="success">buildCapturePackage produces valid CapturePackage with correct linkMap.</scenario-6>
-        <scenario-7 kind="failure">Payload exceeding maxBytes returns PAYLOAD_TOO_LARGE.</scenario-7>
-        <scenario-8 kind="success">sendCapturePackage POSTs to correct URL with optional auth header.</scenario-8>
-        <scenario-9 kind="failure">sendCapturePackage to offline server throws TransportError(PLUGIN_UNAVAILABLE).</scenario-9>
-        <scenario-10 kind="success">checkHealth returns true for running server, false otherwise.</scenario-10>
+        <scenario-1 kind="success" evidence="level-1">discoverAssets finds img[src], img[srcset], picture source[srcset] elements.</scenario-1>
+        <scenario-2 kind="success" evidence="level-1">parseSrcset handles descriptors, multiple URLs, empty input.</scenario-2>
+        <scenario-3 kind="success" evidence="level-1+2">fetchAssets downloads image data as base64 with credentials: include. BLOCK_FETCH_ASSET emitted per asset.</scenario-3>
+        <scenario-4 kind="failure" evidence="level-1+2">fetchAssets on 403 returns FETCH_FORBIDDEN per asset. Failed fetch emits FETCH_FORBIDDEN in log.</scenario-4>
+        <scenario-5 kind="failure" evidence="level-1">fetchAssets timeout returns FETCH_TIMEOUT.</scenario-5>
+        <scenario-6 kind="success" evidence="level-1">buildCapturePackage produces valid CapturePackage with correct linkMap.</scenario-6>
+        <scenario-7 kind="failure" evidence="level-1">Payload exceeding maxBytes returns PAYLOAD_TOO_LARGE.</scenario-7>
+        <scenario-8 kind="success" evidence="level-1+2">sendCapturePackage POSTs to correct URL with optional auth header. BLOCK_TRANSPORT emitted.</scenario-8>
+        <scenario-9 kind="failure" evidence="level-1+2">sendCapturePackage to offline server throws TransportError(PLUGIN_UNAVAILABLE). BLOCK_TRANSPORT emits PLUGIN_UNAVAILABLE.</scenario-9>
+        <scenario-10 kind="success" evidence="level-1">checkHealth returns true for running server, false otherwise.</scenario-10>
+        <scenario-11 kind="success" evidence="level-2">fetchAssets mixed success/failure: BLOCK_FETCH_ASSET emitted for each asset, FETCH_FAILED emitted only for failures.</scenario-11>
+        <scenario-12 kind="success" evidence="level-2">Redaction: no auth token, cookies, or sensitive values appear in any captured log entry.</scenario-12>
       </scenarios>
       <required-log-markers>
         <marker-1>[ClipperFork][discoverAssets][BLOCK_DISCOVER_ASSETS]</marker-1>
@@ -155,37 +236,50 @@
       <required-trace-assertions>
         <assertion-1>Failed fetch must not prevent remaining assets from being fetched.</assertion-1>
         <assertion-2>No auth headers or cookies in any log output.</assertion-2>
+        <assertion-3>transport.test.ts must exist and cover checkHealth + sendCapturePackage success + failure.</assertion-3>
       </required-trace-assertions>
+      <coverage-gaps>
+        <gap-1 severity="high">transport.test.ts does not exist — scenarios 8-10 and VF-004 have no test coverage.</gap-1>
+        <gap-2 severity="medium">No log/trace assertions in any existing test — BLOCK markers are navigation-only, no runtime emission.</gap-2>
+      </coverage-gaps>
       <wave-follow-up>Integration test with Obsidian plugin receiver.</wave-follow-up>
       <phase-follow-up>End-to-end test with live browser extension.</phase-follow-up>
     </V-M-CLIPPER-FORK>
 
     <V-M-OBSIDIAN-PLUGIN MODULE="M-OBSIDIAN-PLUGIN" PRIORITY="high">
       <test-files>
-        <file>apps/obsidian-plugin/src/__tests__/</file>
+        <file>apps/obsidian-plugin/__tests__/manifest-validator.test.ts</file>
+        <file>apps/obsidian-plugin/__tests__/attachment-writer.test.ts</file>
+        <file>apps/obsidian-plugin/__tests__/markdown-rewriter.test.ts</file>
+        <file>apps/obsidian-plugin/__tests__/path-resolver.test.ts</file>
+        <file>apps/obsidian-plugin/__tests__/clip-transaction.test.ts</file>
+        <file>apps/obsidian-plugin/__tests__/http-server.test.ts</file>
       </test-files>
       <module-checks>
         <check-1>pnpm --filter @authclip/obsidian-plugin test</check-1>
         <check-2>pnpm --filter @authclip/obsidian-plugin typecheck</check-2>
       </module-checks>
       <scenarios>
-        <scenario-1 kind="success">validateCapturePackage accepts valid CapturePackage v1.0.</scenario-1>
-        <scenario-2 kind="failure">validateCapturePackage rejects invalid JSON with MANIFEST_INVALID.</scenario-2>
-        <scenario-3 kind="failure">validateCapturePackage rejects wrong major version with MANIFEST_VERSION_MISMATCH.</scenario-3>
-        <scenario-4 kind="success">writeAttachment decodes base64 and writes binary to vault path.</scenario-4>
-        <scenario-5 kind="failure">writeAttachment returns WRITE_FAILED on vault error.</scenario-5>
-        <scenario-6 kind="success">rewriteMarkdown converts markdown image URLs to wikilinks.</scenario-6>
-        <scenario-7 kind="success">rewriteMarkdown converts to relative paths when configured.</scenario-7>
-        <scenario-8 kind="success">rewriteMarkdown handles HTML img tags.</scenario-8>
-        <scenario-9 kind="success">resolveAttachmentDir works for same-as-note, subfolder, and global strategies.</scenario-9>
-        <scenario-10 kind="success">resolveNotePath uses defaultNoteFolder and filename from pathHint.</scenario-10>
-        <scenario-11 kind="success">resolveAttachmentPath generates unique names on conflict.</scenario-11>
-        <scenario-12 kind="success">prependFrontmatter includes all meta fields and asset counts.</scenario-12>
-        <scenario-13 kind="success">executeClipTransaction produces correct ResultReport on happy path.</scenario-13>
-        <scenario-14 kind="success">executeClipTransaction handles partial failures (note still saved).</scenario-14>
-        <scenario-15 kind="failure">HTTP server rejects invalid auth token with 401.</scenario-15>
-        <scenario-16 kind="success">HTTP server health endpoint returns 200.</scenario-16>
-        <scenario-17 kind="failure">sanitizeFilename prevents path traversal patterns.</scenario-17>
+        <scenario-1 kind="success" evidence="level-1">validateCapturePackage accepts valid CapturePackage v1.0.</scenario-1>
+        <scenario-2 kind="failure" evidence="level-1+2">validateCapturePackage rejects invalid JSON with MANIFEST_INVALID. BLOCK_VALIDATE emitted with error.</scenario-2>
+        <scenario-3 kind="failure" evidence="level-1">validateCapturePackage rejects wrong major version with MANIFEST_VERSION_MISMATCH.</scenario-3>
+        <scenario-4 kind="success" evidence="level-1+2">writeAttachment decodes base64 and writes binary to vault path. BLOCK_WRITE_FILE emitted.</scenario-4>
+        <scenario-5 kind="failure" evidence="level-1+2">writeAttachment returns WRITE_FAILED on vault error. BLOCK_WRITE_FILE emits failure.</scenario-5>
+        <scenario-6 kind="success" evidence="level-1+2">rewriteMarkdown converts markdown image URLs to wikilinks. BLOCK_REWRITE_LINKS emitted.</scenario-6>
+        <scenario-7 kind="success" evidence="level-1">rewriteMarkdown converts to relative paths when configured.</scenario-7>
+        <scenario-8 kind="success" evidence="level-1">rewriteMarkdown handles HTML img tags.</scenario-8>
+        <scenario-9 kind="success" evidence="level-1">resolveAttachmentDir works for same-as-note, subfolder, and global strategies.</scenario-9>
+        <scenario-10 kind="success" evidence="level-1">resolveNotePath uses defaultNoteFolder and filename from pathHint.</scenario-10>
+        <scenario-11 kind="success" evidence="level-1+2">resolveAttachmentPath generates unique names on conflict. BLOCK_RESOLVE_PATH emitted.</scenario-11>
+        <scenario-12 kind="success" evidence="level-1">prependFrontmatter includes all meta fields and asset counts.</scenario-12>
+        <scenario-13 kind="success" evidence="level-1+2">executeClipTransaction produces correct ResultReport on happy path. BLOCK_RECEIVE and BLOCK_CREATE_NOTE emitted.</scenario-13>
+        <scenario-14 kind="success" evidence="level-1+2">executeClipTransaction handles partial failures (note still saved). BLOCK_CREATE_NOTE present, BLOCK_WRITE_FILE includes failure for bad attachment.</scenario-14>
+        <scenario-15 kind="failure" evidence="level-1+2">HTTP server rejects invalid auth token with 401. BLOCK_AUTH_CHECK emitted. BLOCK_WRITE_FILE absent.</scenario-15>
+        <scenario-16 kind="success" evidence="level-1">HTTP server health endpoint returns 200.</scenario-16>
+        <scenario-17 kind="failure" evidence="level-1">sanitizeFilename prevents path traversal patterns.</scenario-17>
+        <scenario-18 kind="failure" evidence="level-1+2">HTTP server rejects oversized body with 413 PAYLOAD_TOO_LARGE. No vault writes.</scenario-18>
+        <scenario-19 kind="failure" evidence="level-1+2">HTTP server rejects structurally invalid package with 400. BLOCK_VALIDATE emitted, BLOCK_WRITE_FILE absent.</scenario-19>
+        <scenario-20 kind="success" evidence="level-1">HTTP server accepts capture without auth when authToken is empty.</scenario-20>
       </scenarios>
       <required-log-markers>
         <marker-1>[ObsidianPlugin][validateCapturePackage][BLOCK_VALIDATE]</marker-1>
@@ -193,24 +287,138 @@
         <marker-3>[ObsidianPlugin][rewriteMarkdown][BLOCK_REWRITE_LINKS]</marker-3>
         <marker-4>[ObsidianPlugin][executeClipTransaction][BLOCK_RECEIVE]</marker-4>
         <marker-5>[ObsidianPlugin][executeClipTransaction][BLOCK_CREATE_NOTE]</marker-5>
+        <marker-6>[ObsidianPlugin][handleCapture][BLOCK_AUTH_CHECK]</marker-6>
+        <marker-7>[ObsidianPlugin][resolveAttachmentPath][BLOCK_RESOLVE_PATH]</marker-7>
       </required-log-markers>
       <required-trace-assertions>
-        <assertion-1>MANIFEST_INVALID must not trigger any vault writes.</assertion-1>
+        <assertion-1>MANIFEST_INVALID must not trigger any vault writes (no BLOCK_WRITE_FILE in trace).</assertion-1>
         <assertion-2>Partial write failure must still produce a note with failure metadata.</assertion-2>
-        <assertion-3>No secrets in log output.</assertion-3>
-        <assertion-4>Auth token rejection must not trigger vault writes.</assertion-4>
+        <assertion-3>No secrets in log output (token redaction check).</assertion-3>
+        <assertion-4>Auth token rejection must not trigger vault writes (no BLOCK_WRITE_FILE in trace).</assertion-4>
+        <assertion-5>BLOCK_AUTH_CHECK must appear when authToken is configured and request lacks valid token.</assertion-5>
       </required-trace-assertions>
+      <coverage-gaps>
+        <gap-1 severity="high">No BLOCK_AUTH_CHECK in http-server.ts — VF-006 requires this marker.</gap-1>
+        <gap-2 severity="high">No BLOCK_RESOLVE_PATH in path-resolver.ts — VF-003 requires this marker.</gap-2>
+        <gap-3 severity="medium">No HTML img tag test case in markdown-rewriter.test.ts — scenario-8 untested.</gap-3>
+        <gap-4 severity="medium">No oversized body test in http-server.test.ts — scenario-18 untested.</gap-4>
+        <gap-5 severity="medium">No test for empty authToken skipping auth check — scenario-20 untested.</gap-5>
+        <gap-6 severity="low">No log/trace assertions in any existing test.</gap-6>
+        <gap-7 severity="low">Missing MODULE_CONTRACT header in clip-transaction.ts.</gap-7>
+      </coverage-gaps>
       <wave-follow-up>Integration test with clipper-fork transport.</wave-follow-up>
       <phase-follow-up>End-to-end test with live Obsidian instance.</phase-follow-up>
     </V-M-OBSIDIAN-PLUGIN>
   </ModuleVerification>
+
+  <VerificationMatrix>
+    <purpose>Map each verification plan scenario to its evidence type, test file, and current coverage status.</purpose>
+    <matrix-header>Scenario | Evidence | Test File | Status</matrix-header>
+    <entry scenario="V-M-SHARED-TYPES/s1" evidence="level-1" test="capture-package.test.ts" status="covered" />
+    <entry scenario="V-M-SHARED-TYPES/s2" evidence="level-1" test="capture-package.test.ts" status="covered" />
+    <entry scenario="V-M-SHARED-TYPES/s3" evidence="level-1" test="result-report.test.ts" status="partial" note="schema validation covered, round-trip serialization not tested" />
+    <entry scenario="V-M-SHARED-TYPES/s4" evidence="level-1" test="sanitize.test.ts" status="covered" />
+    <entry scenario="V-M-SHARED-TYPES/s5" evidence="level-1" test="sanitize.test.ts" status="covered" />
+    <entry scenario="V-M-SHARED-TYPES/s6" evidence="level-1" test="sanitize.test.ts" status="covered" />
+    <entry scenario="V-M-SHARED-TYPES/s7" evidence="level-1" test="result-report.test.ts" status="covered" />
+    <entry scenario="V-M-TEMPLATE-ENGINE/s1" evidence="level-1" test="renderer.test.ts" status="covered" />
+    <entry scenario="V-M-TEMPLATE-ENGINE/s2" evidence="level-1" test="parser.test.ts" status="covered" />
+    <entry scenario="V-M-TEMPLATE-ENGINE/s3" evidence="level-1" test="filters/*.test.ts" status="covered" />
+    <entry scenario="V-M-TEMPLATE-ENGINE/s4" evidence="level-1" test="renderer.test.ts" status="covered" />
+    <entry scenario="V-M-TEMPLATE-ENGINE/s5" evidence="level-1" test="renderer.test.ts" status="covered" />
+    <entry scenario="V-M-CLIPPER-FORK/s1" evidence="level-1" test="asset-discovery.test.ts" status="covered" />
+    <entry scenario="V-M-CLIPPER-FORK/s2" evidence="level-1" test="asset-discovery.test.ts" status="covered" />
+    <entry scenario="V-M-CLIPPER-FORK/s3" evidence="level-1+2" test="asset-fetcher.test.ts" status="level-1 covered, level-2 pending logging" />
+    <entry scenario="V-M-CLIPPER-FORK/s4" evidence="level-1+2" test="asset-fetcher.test.ts" status="level-1 covered, level-2 pending logging" />
+    <entry scenario="V-M-CLIPPER-FORK/s5" evidence="level-1" test="asset-fetcher.test.ts" status="covered" />
+    <entry scenario="V-M-CLIPPER-FORK/s6" evidence="level-1" test="package-builder.test.ts" status="covered" />
+    <entry scenario="V-M-CLIPPER-FORK/s7" evidence="level-1" test="asset-fetcher.test.ts" status="covered" />
+    <entry scenario="V-M-CLIPPER-FORK/s8" evidence="level-1+2" test="transport.test.ts" status="missing test file" />
+    <entry scenario="V-M-CLIPPER-FORK/s9" evidence="level-1+2" test="transport.test.ts" status="missing test file" />
+    <entry scenario="V-M-CLIPPER-FORK/s10" evidence="level-1" test="transport.test.ts" status="missing test file" />
+    <entry scenario="V-M-CLIPPER-FORK/s11" evidence="level-2" test="asset-fetcher.test.ts" status="pending logging" />
+    <entry scenario="V-M-CLIPPER-FORK/s12" evidence="level-2" test="transport.test.ts + asset-fetcher.test.ts" status="pending logging" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s1" evidence="level-1" test="manifest-validator.test.ts" status="covered" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s2" evidence="level-1+2" test="manifest-validator.test.ts" status="level-1 covered, level-2 pending logging" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s3" evidence="level-1" test="manifest-validator.test.ts" status="covered" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s4" evidence="level-1+2" test="attachment-writer.test.ts" status="level-1 covered, level-2 pending logging" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s5" evidence="level-1+2" test="attachment-writer.test.ts" status="level-1 covered, level-2 pending logging" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s6" evidence="level-1+2" test="markdown-rewriter.test.ts" status="level-1 covered, level-2 pending logging" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s7" evidence="level-1" test="markdown-rewriter.test.ts" status="covered" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s8" evidence="level-1" test="markdown-rewriter.test.ts" status="untested" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s9" evidence="level-1" test="path-resolver.test.ts" status="covered" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s10" evidence="level-1" test="path-resolver.test.ts" status="covered" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s11" evidence="level-1+2" test="path-resolver.test.ts" status="level-1 covered, level-2 pending BLOCK_RESOLVE_PATH" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s12" evidence="level-1" test="clip-transaction.test.ts" status="covered" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s13" evidence="level-1+2" test="clip-transaction.test.ts" status="level-1 covered, level-2 pending logging" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s14" evidence="level-1+2" test="clip-transaction.test.ts" status="level-1 covered, level-2 pending logging" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s15" evidence="level-1+2" test="http-server.test.ts" status="level-1 covered, level-2 pending BLOCK_AUTH_CHECK" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s16" evidence="level-1" test="http-server.test.ts" status="covered" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s17" evidence="level-1" test="sanitize.test.ts" status="covered" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s18" evidence="level-1+2" test="http-server.test.ts" status="untested" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s19" evidence="level-1+2" test="http-server.test.ts" status="untested" />
+    <entry scenario="V-M-OBSIDIAN-PLUGIN/s20" evidence="level-1" test="http-server.test.ts" status="untested" />
+  </VerificationMatrix>
+
+  <VerificationLevels>
+    <Module-Level>
+      <purpose>Worker-local fast checks per package. Run after every module change.</purpose>
+      <scope>typecheck, lint, unit tests with deterministic assertions, local trace checks</scope>
+      <commands>
+        <M-SHARED-TYPES>
+          <cmd-1>pnpm --filter @authclip/shared-types typecheck</cmd-1>
+          <cmd-2>pnpm --filter @authclip/shared-types test</cmd-2>
+        </M-SHARED-TYPES>
+        <M-TEMPLATE-ENGINE>
+          <cmd-1>pnpm --filter @authclip/template-engine typecheck</cmd-1>
+          <cmd-2>pnpm --filter @authclip/template-engine test</cmd-2>
+        </M-TEMPLATE-ENGINE>
+        <M-CLIPPER-FORK>
+          <cmd-1>pnpm --filter @authclip/clipper-fork typecheck</cmd-1>
+          <cmd-2>pnpm --filter @authclip/clipper-fork test</cmd-2>
+        </M-CLIPPER-FORK>
+        <M-OBSIDIAN-PLUGIN>
+          <cmd-1>pnpm --filter @authclip/obsidian-plugin typecheck</cmd-1>
+          <cmd-2>pnpm --filter @authclip/obsidian-plugin test</cmd-2>
+        </M-OBSIDIAN-PLUGIN>
+      </commands>
+    </Module-Level>
+
+    <Wave-Level>
+      <purpose>Integration checks for merged surfaces touched in the wave. Run after each wave completes.</purpose>
+      <scope>Cross-package type compatibility, transport integration (clipper POST to plugin), schema contract alignment</scope>
+      <commands>
+        <cmd-1>pnpm -r --stream typecheck</cmd-1>
+        <cmd-2>pnpm -r --stream test</cmd-2>
+      </commands>
+      <additional-checks>
+        <check-1>Verify CapturePackageSchema changes are consumed correctly by both clipper-fork and obsidian-plugin</check-1>
+        <check-2>Verify transport contract: clipper-fork send matches plugin http-server handleCapture expectations</check-2>
+      </additional-checks>
+    </Wave-Level>
+
+    <Phase-Level>
+      <purpose>Full regression suite before marking phase done. High confidence gate.</purpose>
+      <scope>All packages, all tests, trace sequence verification across critical flows, redaction audit</scope>
+      <commands>
+        <cmd-1>pnpm typecheck</cmd-1>
+        <cmd-2>pnpm test</cmd-2>
+        <cmd-3>pnpm lint</cmd-3>
+      </commands>
+      <additional-checks>
+        <check-1>Run redaction audit: grep all test-captured logs for secret patterns (token, cookie, authorization, base64 data blocks)</check-1>
+        <check-2>Verify all VF-xxx critical flow trace sequences pass</check-2>
+        <check-3>Verify no BLOCK_WRITE_FILE in traces for validation/auth failure paths</check-3>
+      </additional-checks>
+    </Phase-Level>
+  </VerificationLevels>
 
   <PhaseGates>
     <Gate-Phase-1 PHASE="Phase-1">
       <goal>Shared types, schemas, and template engine validated.</goal>
       <commands>
         <command-1>pnpm --filter @authclip/shared-types test</command-1>
-        <command-2>pnpm --filter @authclip/template-engine test</command-2>
+        <command-2>pnpm --filter @authclip/template-engine test</command-3>
         <command-3>pnpm --filter @authclip/shared-types typecheck</command-3>
         <command-4>pnpm --filter @authclip/template-engine typecheck</command-4>
       </commands>
@@ -218,6 +426,7 @@
         <evidence-1>CapturePackage schema validates good/bad payloads.</evidence-1>
         <evidence-2>Template engine renders all standard filters.</evidence-2>
       </required-evidence>
+      <status>done</status>
     </Gate-Phase-1>
 
     <Gate-Phase-2 PHASE="Phase-2">
@@ -231,7 +440,9 @@
         <evidence-2>Fetch produces valid base64 payload.</evidence-2>
         <evidence-3>CapturePackage passes shared-types validation.</evidence-3>
         <evidence-4>Transport sends and receives with auth token.</evidence-4>
+        <evidence-5>transport.test.ts covers checkHealth + sendCapturePackage success + failure.</evidence-5>
       </required-evidence>
+      <status>in-progress</status>
     </Gate-Phase-2>
 
     <Gate-Phase-3 PHASE="Phase-3">
@@ -246,7 +457,11 @@
         <evidence-3>Partial failure still produces a note.</evidence-3>
         <evidence-4>Auth token rejection returns 401 without vault writes.</evidence-4>
         <evidence-5>Frontmatter contains source meta and asset counts.</evidence-5>
+        <evidence-6>HTML img tags rewritten correctly.</evidence-6>
+        <evidence-7>Oversized body rejected with 413.</evidence-7>
+        <evidence-8>Empty authToken skips auth check.</evidence-8>
       </required-evidence>
+      <status>in-progress</status>
     </Gate-Phase-3>
 
     <Gate-Phase-4 PHASE="Phase-4">
@@ -261,13 +476,45 @@
         <evidence-3>Path traversal filenames rejected.</evidence-3>
         <evidence-4>CSS background-image URLs discovered when enabled.</evidence-4>
         <evidence-5>All module-level and phase-level checks green.</evidence-5>
+        <evidence-6>All VF-xxx critical flow trace sequences pass.</evidence-6>
       </required-evidence>
+      <status>pending</status>
     </Gate-Phase-4>
   </PhaseGates>
 
   <FailurePackets>
+    <purpose>When verification fails, produce a concise failure packet using the operational-packets.xml FailurePacketTemplate shape.</purpose>
     <packet-template>
-      <expected-fields>scenario, expected-evidence, observed-evidence, first-divergent-block, next-action</expected-fields>
+      <expected-fields>scenario, contract-ref, expected-evidence, observed-evidence, first-divergent-block, suggested-next-action</expected-fields>
     </packet-template>
+    <example>
+      <FailurePacket>
+        <scenario>sendCapturePackage to offline server</scenario>
+        <contract-ref>V-M-CLIPPER-FORK / scenario-9</contract-ref>
+        <expected-evidence>TransportError thrown with code=PLUGIN_UNAVAILABLE, BLOCK_TRANSPORT marker present</expected-evidence>
+        <observed-evidence>Error thrown with code=PLUGIN_UNAVAILABLE, but no BLOCK_TRANSPORT marker in trace</observed-evidence>
+        <first-divergent-block>BLOCK_TRANSPORT (missing)</first-divergent-block>
+        <suggested-next-action>Add logger call inside BLOCK_TRANSPORT in transport.ts sendCapturePackage function</suggested-next-action>
+      </FailurePacket>
+    </example>
   </FailurePackets>
+
+  <AutonomousReadiness>
+    <assessment-status>not-ready</assessment-status>
+    <blockers>
+      <blocker-1 severity="high">transport.test.ts does not exist — 3 scenarios and VF-004 have no coverage.</blocker-1>
+      <blocker-2 severity="high">No structured logging in source modules — trace assertions cannot verify execution paths.</blocker-2>
+      <blocker-3 severity="medium">Missing BLOCK_AUTH_CHECK and BLOCK_RESOLVE_PATH in source modules — VF-003 and VF-006 cannot emit required signals.</blocker-3>
+      <blocker-4 severity="medium">HTML img tag rewriting untested — scenario-8 is a gap.</blocker-4>
+      <blocker-5 severity="medium">No redaction audit tests — VF-005 has no evidence mechanism.</blocker-5>
+    </blockers>
+    <readiness-criteria>
+      <criterion-1>All module-level test commands pass with 0 failures.</criterion-1>
+      <criterion-2>transport.test.ts exists and covers scenarios 8-10, 11-12.</criterion-2>
+      <criterion-3>All source modules with BLOCK markers emit structured log entries.</criterion-3>
+      <criterion-4>TraceCollector utility exists and is used in at least clipper-fork and obsidian-plugin test suites.</criterion-4>
+      <criterion-5>All VF-xxx critical flow trace sequences can be verified.</criterion-5>
+      <criterion-6>Redaction audit test passes across all captured log output.</criterion-6>
+    </readiness-criteria>
+  </AutonomousReadiness>
 </VerificationPlan>

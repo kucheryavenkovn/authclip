@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { validateCapturePackage } from "../src/manifest-validator";
+import { TraceCollector } from "./trace-collector";
 
 describe("validateCapturePackage", () => {
   function makeValidPackage() {
@@ -280,5 +281,26 @@ describe("validateCapturePackage", () => {
     pkg.options.rewriteMode = "relative-markdown";
     const result = validateCapturePackage(pkg);
     expect(result.valid).toBe(true);
+  });
+
+  it("emits BLOCK_VALIDATE marker on valid package", () => {
+    const trace = new TraceCollector();
+    validateCapturePackage(makeValidPackage(), trace.log);
+    trace.assertMarker("ObsidianPlugin][validateCapturePackage][BLOCK_VALIDATE");
+    trace.assertMarkerContaining("valid");
+  });
+
+  it("emits BLOCK_VALIDATE marker with MANIFEST_INVALID on null input", () => {
+    const trace = new TraceCollector();
+    validateCapturePackage(null, trace.log);
+    trace.assertMarkerContaining("MANIFEST_INVALID");
+  });
+
+  it("emits BLOCK_VALIDATE marker with MANIFEST_VERSION_MISMATCH", () => {
+    const trace = new TraceCollector();
+    const pkg = makeValidPackage();
+    pkg.version = "2.0";
+    validateCapturePackage(pkg, trace.log);
+    trace.assertMarkerContaining("MANIFEST_VERSION_MISMATCH");
   });
 });

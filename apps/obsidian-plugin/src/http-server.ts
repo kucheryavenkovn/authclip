@@ -122,8 +122,10 @@ async function handleCapture(
   logger: (msg: string) => void
 ): Promise<void> {
   if (settings.authToken) {
+    // START_BLOCK_AUTH_CHECK
     const token = req.headers["x-authclip-token"];
     if (token !== settings.authToken) {
+      logger(`[ObsidianPlugin][handleCapture][BLOCK_AUTH_CHECK] rejected: invalid auth token`);
       sendJson(res, 401, {
         version: "1.0",
         status: "failed",
@@ -133,6 +135,8 @@ async function handleCapture(
       });
       return;
     }
+    logger(`[ObsidianPlugin][handleCapture][BLOCK_AUTH_CHECK] auth token validated`);
+    // END_BLOCK_AUTH_CHECK
   }
 
   let body: string;
@@ -173,11 +177,12 @@ async function handleCapture(
     return;
   }
 
-  const validation = validateCapturePackage(raw);
+  const validation = validateCapturePackage(raw, logger);
   if (!validation.valid) {
     const code = validation.errorMessage!.startsWith("MANIFEST_VERSION_MISMATCH")
       ? "MANIFEST_VERSION_MISMATCH"
       : "MANIFEST_INVALID";
+    logger(`[ObsidianPlugin][handleCapture][BLOCK_VALIDATE] rejected: ${code}`);
     sendJson(res, 400, {
       version: "1.0",
       status: "failed",
@@ -192,6 +197,7 @@ async function handleCapture(
     pkg: validation.pkg!,
     settings,
     vault,
+    log: logger,
   });
 
   const httpStatus = report.status === "failed" ? 500 : 200;

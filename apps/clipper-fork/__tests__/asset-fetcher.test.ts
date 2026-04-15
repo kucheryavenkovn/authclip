@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fetchAssets } from "../src/asset-fetcher";
 import type { DiscoveredAsset } from "@authclip/shared-types";
+import { TraceCollector } from "./trace-collector";
 
 const BASE_ASSET: Omit<DiscoveredAsset, "id" | "url"> = {
   source: "img-src",
@@ -185,5 +186,45 @@ describe("fetchAssets", () => {
       "https://example.com/x.jpg",
       expect.objectContaining({ credentials: "include" })
     );
+  });
+
+  it("emits BLOCK_FETCH_ASSET marker per asset", async () => {
+    mockFetchOk("https://example.com/photo.jpg", "data");
+    const trace = new TraceCollector();
+    await fetchAssets([makeAsset("https://example.com/photo.jpg")], undefined, trace.log);
+    trace.assertMarker("ClipperFork][fetchAssets][BLOCK_FETCH_ASSET");
+    trace.assertMarkerContaining("fetched assetId=asset_https://example.com/photo.jpg");
+  });
+
+  it("emits FETCH_FORBIDDEN marker for 403", async () => {
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 403,
+      headers: new Headers(),
+    });
+    const trace = new TraceCollector();
+    await fetchAssets([makeAsset("https://example.com/forbidden.jpg")], undefined, trace.log);
+    trace.assertMarkerContaining("FETCH_FORBIDDEN");
+  });
+
+  it("emits summary marker with counts", async () => {
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation(async (input: RequestInfo) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.includes("bad")) {
+        return { ok: false, status: 500, headers: new Headers() };
+      }
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "image/jpeg" }),
+        arrayBuffer: async () => new TextEncoder().encode("ok").buffer,
+      };
+    });
+    const trace = new TraceCollector();
+    await fetchAssets([
+      makeAsset("https://example.com/good.jpg"),
+      makeAsset("https://example.com/bad.jpg"),
+    ], undefined, trace.log);
+    trace.assertMarkerContaining("fetched=1 failed=1");
   });
 });

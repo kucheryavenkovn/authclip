@@ -111,7 +111,7 @@ const COLLECTORS: Array<
 //   SIDE_EFFECTS: Resets internal ID counter
 //   LINKS: M-SHARED-TYPES, M-CLIPPER-FORK
 // END_CONTRACT: discoverAssets
-export function discoverAssets(root: ParentNode, baseUrl: string): DiscoveredAsset[] {
+export function discoverAssets(root: ParentNode, baseUrl: string, log?: (msg: string) => void): DiscoveredAsset[] {
   // START_BLOCK_DISCOVER_ASSETS
   resetIdCounter();
   const seen = new Set<string>();
@@ -119,6 +119,7 @@ export function discoverAssets(root: ParentNode, baseUrl: string): DiscoveredAss
   for (const collector of COLLECTORS) {
     collector(root, baseUrl, seen, assets);
   }
+  log?.(`[ClipperFork][discoverAssets][BLOCK_DISCOVER_ASSETS] discovered ${assets.length} assets`);
   return assets;
   // END_BLOCK_DISCOVER_ASSETS
 }

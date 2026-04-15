@@ -58,7 +58,7 @@ function buildPathHint(title: string): string {
 //   SIDE_EFFECTS: none
 //   LINKS: M-SHARED-TYPES
 // END_CONTRACT: buildCapturePackage
-export function buildCapturePackage(input: PackageInput): CapturePackage {
+export function buildCapturePackage(input: PackageInput, log?: (msg: string) => void): CapturePackage {
   // START_BLOCK_BUILD_PACKAGE
   const attachments = input.attachments;
   const linkMap = buildLinkMap(attachments);
@@ -80,7 +80,7 @@ export function buildCapturePackage(input: PackageInput): CapturePackage {
     markdown: input.markdown,
   };
 
-  return {
+  const pkg: CapturePackage = {
     version: "1.0",
     source,
     note,
@@ -90,5 +90,8 @@ export function buildCapturePackage(input: PackageInput): CapturePackage {
     ...(input.meta && { meta: input.meta }),
     ...(input.selectedHtml && { selectedHtml: input.selectedHtml }),
   };
+
+  log?.(`[ClipperFork][buildCapturePackage][BLOCK_BUILD_PACKAGE] package built attachments=${attachments.length} linkMap=${linkMap.length}`);
+  return pkg;
   // END_BLOCK_BUILD_PACKAGE
 }

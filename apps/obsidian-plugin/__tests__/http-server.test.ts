@@ -3,6 +3,7 @@ import { startHttpServer } from "../src/http-server";
 import type { ClipSettings } from "@authclip/shared-types";
 import { DEFAULT_SETTINGS } from "@authclip/shared-types";
 import type { VaultAdapter } from "../src/vault-adapter";
+import { TraceCollector } from "./trace-collector";
 
 function makeVault(): VaultAdapter {
   const files = new Map<string, Uint8Array | string>();
@@ -117,5 +118,115 @@ describe("HTTP server", () => {
   it("returns 404 for unknown routes", async () => {
     const res = await fetch(`http://127.0.0.1:${port}/unknown`);
     expect(res.status).toBe(404);
+  });
+
+  it("rejects structurally invalid package with 400", async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/v1/capture`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-AuthClip-Token": "test-secret",
+      },
+      body: JSON.stringify({ version: "1.0", invalid: true }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.errors[0].code).toBe("MANIFEST_INVALID");
+  });
+
+  it("rejects wrong major version with 400", async () => {
+    const pkg = {
+      ...makePackage(),
+      version: "2.0",
+    };
+    const res = await fetch(`http://127.0.0.1:${port}/v1/capture`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-AuthClip-Token": "test-secret",
+      },
+      body: JSON.stringify(pkg),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.errors[0].code).toBe("MANIFEST_VERSION_MISMATCH");
+  });
+});
+
+describe("HTTP server without auth token", () => {
+  const port = 27198;
+  let server: Awaited<ReturnType<typeof startHttpServer>>;
+
+  beforeAll(async () => {
+    const settings: ClipSettings = { ...DEFAULT_SETTINGS, port, authToken: "" };
+    server = await startHttpServer(settings, makeVault());
+  });
+
+  afterAll(async () => {
+    await server.close();
+  });
+
+  it("accepts capture without auth when authToken is empty", async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/v1/capture`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(makePackage()),
+    });
+    expect(res.status).toBe(200);
+  });
+});
+
+describe("HTTP server with trace collection", () => {
+  const port = 27197;
+  let server: Awaited<ReturnType<typeof startHttpServer>>;
+  let trace: TraceCollector;
+
+  beforeAll(async () => {
+    trace = new TraceCollector();
+    const settings: ClipSettings = { ...DEFAULT_SETTINGS, port, authToken: "trace-secret" };
+    server = await startHttpServer(settings, makeVault(), trace.log);
+  });
+
+  afterAll(async () => {
+    await server.close();
+  });
+
+  it("emits BLOCK_AUTH_CHECK on auth rejection", async () => {
+    trace.reset();
+    await fetch(`http://127.0.0.1:${port}/v1/capture`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(makePackage()),
+    });
+    trace.assertMarker("ObsidianPlugin][handleCapture][BLOCK_AUTH_CHECK");
+    trace.assertNoMarker("ObsidianPlugin][writeAttachment][BLOCK_WRITE_FILE");
+  });
+
+  it("emits BLOCK_AUTH_CHECK and BLOCK_VALIDATE on valid request", async () => {
+    trace.reset();
+    await fetch(`http://127.0.0.1:${port}/v1/capture`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-AuthClip-Token": "trace-secret",
+      },
+      body: JSON.stringify(makePackage()),
+    });
+    trace.assertMarker("ObsidianPlugin][handleCapture][BLOCK_AUTH_CHECK");
+    trace.assertMarkerContaining("auth token validated");
+  });
+
+  it("does not log auth token values in trace output", async () => {
+    trace.reset();
+    await fetch(`http://127.0.0.1:${port}/v1/capture`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-AuthClip-Token": "trace-secret",
+      },
+      body: JSON.stringify(makePackage()),
+    });
+    trace.assertNoMarkerContaining("trace-secret");
+    trace.assertNoSecrets();
   });
 });

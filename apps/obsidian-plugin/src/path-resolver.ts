@@ -55,10 +55,15 @@ export function resolveAttachmentDir(
 export function resolveAttachmentPath(
   attachmentDir: string,
   suggestedName: string,
-  existingNames: ReadonlySet<string>
+  existingNames: ReadonlySet<string>,
+  log?: (msg: string) => void
 ): string {
+  // START_BLOCK_RESOLVE_PATH
   const safeName = generateSafeName(suggestedName, existingNames);
-  return joinPosix(attachmentDir, safeName);
+  const resolved = joinPosix(attachmentDir, safeName);
+  log?.(`[ObsidianPlugin][resolveAttachmentPath][BLOCK_RESOLVE_PATH] name=${safeName} resolved=${resolved}`);
+  return resolved;
+  // END_BLOCK_RESOLVE_PATH
 }
 
 export function joinPosix(...segments: string[]): string {

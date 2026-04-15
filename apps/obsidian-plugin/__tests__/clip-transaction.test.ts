@@ -3,6 +3,7 @@ import { executeClipTransaction } from "../src/clip-transaction";
 import type { CapturePackage, ClipSettings } from "@authclip/shared-types";
 import { DEFAULT_SETTINGS } from "@authclip/shared-types";
 import type { VaultAdapter } from "../src/vault-adapter";
+import { TraceCollector } from "./trace-collector";
 
 function makeVault(): {
   vault: VaultAdapter;
@@ -467,5 +468,52 @@ describe("executeClipTransaction", () => {
     const noteContent = files.get("Clippings/2026-04-14 Test-Article.md") as string;
     expect(noteContent).toContain("![[a.jpg]]");
     expect(noteContent).toContain("<!-- authclip: failed to localize URL -->");
+  });
+
+  it("emits BLOCK_RECEIVE and BLOCK_CREATE_NOTE markers on success", async () => {
+    const { vault } = makeVault();
+    const trace = new TraceCollector();
+    await executeClipTransaction({
+      pkg: makePackage(),
+      settings: { ...DEFAULT_SETTINGS },
+      vault,
+      log: trace.log,
+    });
+    trace.assertMarker("ObsidianPlugin][executeClipTransaction][BLOCK_RECEIVE");
+    trace.assertMarker("ObsidianPlugin][executeClipTransaction][BLOCK_CREATE_NOTE");
+    trace.assertMarker("ObsidianPlugin][writeAttachment][BLOCK_WRITE_FILE");
+    trace.assertMarker("ObsidianPlugin][rewriteMarkdown][BLOCK_REWRITE_LINKS");
+  });
+
+  it("emits BLOCK_CREATE_NOTE even when attachments fail", async () => {
+    const { vault } = makeVault();
+    const failingVault: VaultAdapter = {
+      ...vault,
+      async writeBinary() {
+        throw new Error("Write error");
+      },
+    };
+    const trace = new TraceCollector();
+    const report = await executeClipTransaction({
+      pkg: makePackage(),
+      settings: { ...DEFAULT_SETTINGS },
+      vault: failingVault,
+      log: trace.log,
+    });
+    expect(report.status).toBe("partial");
+    trace.assertMarker("ObsidianPlugin][executeClipTransaction][BLOCK_CREATE_NOTE");
+    trace.assertMarkerContaining("WRITE_FAILED");
+  });
+
+  it("emits BLOCK_RESOLVE_PATH marker", async () => {
+    const { vault } = makeVault();
+    const trace = new TraceCollector();
+    await executeClipTransaction({
+      pkg: makePackage(),
+      settings: { ...DEFAULT_SETTINGS },
+      vault,
+      log: trace.log,
+    });
+    trace.assertMarker("ObsidianPlugin][resolveAttachmentPath][BLOCK_RESOLVE_PATH");
   });
 });
